@@ -9,3 +9,15 @@ repos:
         language: system
         types: [go]
         pass_filenames: false
+
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -w
+        language: system
+        types: [go]
+
+      - id: goimports
+        name: goimports
+        entry: goimports -w -local github.com/haipham22/govern
+        language: system
+        types: [go]

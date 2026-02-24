@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/haipham22/govern/log"
 	"go.uber.org/zap"
+
+	"github.com/haipham22/govern/log"
 )
 
 // Cleanup is a shutdown hook. It receives a context with deadline.
@@ -45,7 +46,7 @@ type Manager struct {
 	once     sync.Once
 }
 
-// New creates a Manager with a signal-aware context.
+// NewManager New creates a Manager with a signal-aware context.
 // Default signals: SIGINT, SIGTERM.
 func NewManager(parent context.Context, opts ...Option) *Manager {
 	if parent == nil {
@@ -127,7 +128,7 @@ func (m *Manager) Wait() error {
 	}
 }
 
-// Shutdown:
+// Shutdown performs graceful shutdown in 3 steps:
 //  1. cancels context (idempotent)
 //  2. waits for goroutines (up to timeout)
 //  3. runs cleanup hooks with deadline context

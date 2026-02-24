@@ -1,4 +1,4 @@
-package graceful
+package http
 
 import (
 	"context"
@@ -6,66 +6,71 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/haipham22/govern/log"
 	"go.uber.org/zap"
+
+	"github.com/haipham22/govern/graceful"
+	"github.com/haipham22/govern/log"
 )
 
-// ServerOption configures a Server.
-type ServerOption func(*Server)
-
-// WithShutdownTimeout sets the maximum time to wait for connections to close.
-func WithShutdownTimeout(timeout time.Duration) ServerOption {
-	return func(s *Server) {
-		s.shutdownTimeout = timeout
-	}
-}
-
-// WithLogger sets a custom logger.
-func WithServerLogger(logger *zap.SugaredLogger) ServerOption {
-	return func(s *Server) {
-		s.logger = logger
-	}
-}
-
-// WithServerOptions sets additional http.Server options.
-func WithServerOptions(opts ...func(*http.Server)) ServerOption {
-	return func(s *Server) {
-		for _, opt := range opts {
-			opt(s.server)
-		}
-	}
-}
+// Middleware function type
+type Middleware func(http.Handler) http.Handler
 
 // Server wraps an http.Server with graceful shutdown capabilities.
 type Server struct {
 	server          *http.Server
 	shutdownTimeout time.Duration
 	logger          *zap.SugaredLogger
-	manager         *Manager
+	manager         *graceful.Manager
+	middlewares     []Middleware
 }
+
+// ServerOption configures a Server.
+type ServerOption func(*Server)
 
 // NewServer creates a new Server with graceful shutdown support.
 func NewServer(addr string, handler http.Handler, opts ...ServerOption) *Server {
 	s := &Server{
 		server: &http.Server{
-			Addr:    addr,
-			Handler: handler,
+			Addr:              addr,
+			Handler:           handler,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
 		},
 		shutdownTimeout: 30 * time.Second,
 		logger:          log.Default(),
+		middlewares:     []Middleware{},
 	}
 
 	for _, opt := range opts {
 		opt(s)
 	}
 
-	s.manager = NewManager(context.Background())
+	s.manager = graceful.NewManager(context.Background())
 
 	return s
 }
 
+// Use adds middleware to the server.
+func (s *Server) Use(middleware ...Middleware) {
+	s.middlewares = append(s.middlewares, middleware...)
+}
+
+// buildHandler builds the final handler with middleware chain.
+func (s *Server) buildHandler() http.Handler {
+	handler := s.server.Handler
+	for i := len(s.middlewares) - 1; i >= 0; i-- {
+		handler = s.middlewares[i](handler)
+	}
+	return handler
+}
+
 // Start begins serving and blocks until the server is shut down gracefully.
 func (s *Server) Start() error {
+	// Build handler with middleware
+	s.server.Handler = s.buildHandler()
+
 	// Register server shutdown as cleanup
 	s.manager.Defer(func(ctx context.Context) error {
 		s.logger.Info("Shutting down HTTP server")
@@ -91,9 +96,7 @@ func (s *Server) Start() error {
 }
 
 // Shutdown triggers a graceful shutdown programmatically.
-func (s *Server) Shutdown() error {
-	ctx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
-	defer cancel()
+func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 

@@ -73,17 +73,18 @@ func ExampleWorkerGroup() {
 }
 
 // ExampleServer demonstrates HTTP server usage.
+// Note: HTTP server functionality has moved to github.com/haipham22/govern/http
 func ExampleServer() {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Hello, World!"))
 	})
 
-	server := NewServer(
-		":8080",
-		handler,
-		WithShutdownTimeout(10*time.Second),
-	)
-
-	_ = server.Start()
+	// Import github.com/haipham22/govern/http
+	// server := http.NewServer(
+	//     ":8080",
+	//     handler,
+	//     http.WithShutdownTimeout(10*time.Second),
+	// )
+	// _ = server.Start()
 }

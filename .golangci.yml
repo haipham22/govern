@@ -1,6 +1,14 @@
+# golangci-lint configuration
+# https://golangci-lint.run/usage/configuration/
+
 run:
+  # Timeout for analysis
   timeout: 5m
+
+  # Include test files
   tests: true
+
+  # Build tags
   build-tags: []
 
 output:
@@ -11,43 +19,61 @@ output:
   sort-results: true
 
 linters:
+  # Start with disabled linters
   disable-all: true
+
+  # Enable specific linters
+  # https://golangci-lint.run/usage/linters/
   enable:
     # Bugs
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - typecheck
-    - unused
+    - errcheck          # Check for unchecked errors
+    - gosimple          # Simplify code
+    - govet             # Standard go vet
+    - ineffassign       # Detect ineffectual assignments
+    - staticcheck       # Static analysis
+    - typecheck         # Standard Go type checker
+    - unused            # Check for unused code
 
     # Style
-    - gocritic
-    - gofmt
-    - misspell
+    - gocritic          # Provides diagnostics for bugs, performance and style
+    - gofmt             # Standard gofmt
+    - misspell          # Find commonly misspelled English words
+    - goimports         # Standard goimports (also fixes import order)
 
     # Complexity
-    - gocyclo
+    - gocyclo           # Compute cyclomatic complexities
 
     # Performance
-    - prealloc
+    - prealloc          # Find slice declarations that could be preallocated
 
 linters-settings:
   errcheck:
+    # Report about not checking of errors in type assertions
     check-type-assertions: true
+    # Check for ignored errors in blanket imports
     check-blank: false
+    # List of functions to exclude from checking
+    exclude-functions:
+      - (io.Closer).Close
+      - (*database/sql.DB).Close
+      - (*database/sql.Tx).Commit
+      - (*database/sql.Tx).Rollback
+      - (*os.File).Close
 
   gocyclo:
+    # Minimum cyclomatic complexity to report
     min-complexity: 15
 
   govet:
+    # Enable all analyzers
     enable-all: true
+    # Disable specific analyzers
     disable:
-      - shadow
-      - fieldalignment
+      - shadow           # Has false positives
+      - fieldalignment   # Not needed
 
   gocritic:
+    # Enable checks by tags
     enabled-tags:
       - diagnostic
       - experimental
@@ -55,21 +81,31 @@ linters-settings:
       - performance
       - style
 
+  goimports:
+    # Local import prefixes
+    local-prefixes: github.com/haipham22/govern
+
   staticcheck:
+    # Run all checks
     checks: ["all"]
 
   prealloc:
+    # Report preallocation suggestions only on simple loops
     simple: true
+    # Report preallocation in range loops
     range-loops: true
+    # Report preallocation in for loops
     for-loops: false
 
 issues:
+  # Directories to exclude from linting
   exclude-dirs:
-    - .git
-    - .claude
-    - docs
-    - plans
-    - .idea
+    - vendor
+    - third_party
+    - testdata
+    - examples
+    - Godeps
+    - builtin
 
   exclude-rules:
     # Exclude some linters from running on tests files
@@ -95,10 +131,23 @@ issues:
       linters:
         - all
 
+    # Exclude ERRHANDLING issues in generated code
+    - linters:
+        - errcheck
+      text: "Error return value of .((os\\.)?Std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*print|os\\.(Un)?Setenv). is not checked"
+
+  # Maximum issues count per one linter (0 = no limit)
   max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text (0 = no limit)
   max-same-issues: 0
+
+  # Uniquify issues by line
   uniq-by-line: true
 
 severity:
+  # Default severity for issues
   default-severity: error
+
+  # Case sensitive matching
   case-sensitive: false

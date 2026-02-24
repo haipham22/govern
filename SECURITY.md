@@ -119,7 +119,7 @@ We regularly update dependencies to address known vulnerabilities:
 ## Security Contact Information
 
 * **Project Maintainer**: Haipham22
-* **Security Email**: security@govern.dev (replace with actual email)
+* **Security Email**: contact@haipham.net (replace with actual email)
 * **GitHub Security Advisories**: https://github.com/haipham22/govern/security/advisories
 
 ## License

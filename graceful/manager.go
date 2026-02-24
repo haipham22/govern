@@ -114,12 +114,16 @@ func (m *Manager) Defer(c Cleanup) {
 // Wait blocks until context canceled (signal/manual) or first goroutine error arrives.
 // Returns first goroutine error (if any).
 func (m *Manager) Wait() error {
+	// Prioritize error over context cancellation
 	select {
+	case err := <-m.errCh:
+		m.logger.Debug("Goroutine error received")
+		return err
 	case <-m.ctx.Done():
 		m.logger.Debug("Context canceled, stopping wait")
-	case <-m.errCh:
 	}
 
+	// Check if error arrived after context cancellation
 	select {
 	case err := <-m.errCh:
 		return err

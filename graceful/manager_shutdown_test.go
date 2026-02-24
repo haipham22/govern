@@ -18,7 +18,8 @@ func TestManagerGoWithError(t *testing.T) {
 	})
 
 	<-started
-	time.Sleep(10 * time.Millisecond)
+	// Wait for error to be sent to errCh
+	time.Sleep(100 * time.Millisecond)
 
 	err := m.Wait()
 	if err != testErr {

@@ -2,6 +2,7 @@ package graceful
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -59,23 +60,26 @@ func TestWorkerGroupConcurrency(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	count := 0
-	maxCount := 0
+	var count atomic.Int64
+	var maxCount atomic.Int64
 
 	// Start 5 jobs, but max concurrency is 2
 	for i := 0; i < 5; i++ {
 		wg.TryGo(ctx, func(ctx context.Context) {
-			count++
-			if count > maxCount {
-				maxCount = count
+			c := count.Add(1)
+			for {
+				m := maxCount.Load()
+				if c <= m || maxCount.CompareAndSwap(m, c) {
+					break
+				}
 			}
 			time.Sleep(10 * time.Millisecond)
-			count--
+			count.Add(-1)
 		})
 	}
 
-	if maxCount > 2 {
-		t.Errorf("Max concurrency = %v, want <= 2", maxCount)
+	if maxCount.Load() > 2 {
+		t.Errorf("Max concurrency = %v, want <= 2", maxCount.Load())
 	}
 }
 

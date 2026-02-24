@@ -63,7 +63,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.60.1
           args: --timeout=5m
 
   build:
@@ -88,6 +88,3 @@ jobs:
 
       - name: Build
         run: go build -v ./...
-
-      - name: Test build
-        run: go build -o /tmp/govern-test ./...

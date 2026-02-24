@@ -15,7 +15,7 @@ go get github.com/haipham22/govern
 
 | Package                                     | Description                                                  |
 |---------------------------------------------|--------------------------------------------------------------|
-| [`config`](./config/)                       | Configuration loading with YAML and ENV variables            |
+| [`config`](./config/)                       | Configuration loading with YAML, .env, and ENV variables      |
 | [`http`](./http/)                           | HTTP server with graceful shutdown and middleware            |
 | [`http/echo`](./http/echo/)                 | Echo framework integration with Govern's HTTP server         |
 | [`http/jwt`](./http/jwt/)                   | JWT authentication middleware and token management           |

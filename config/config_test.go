@@ -284,3 +284,103 @@ func ExampleLoad() {
 	// Use the config
 	fmt.Println(cfg.Server.Host, cfg.Server.Port)
 }
+
+func TestLoadFromEnv(t *testing.T) {
+	// Create test .env file
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	envContent := `SERVER_HOST=localhost
+SERVER_PORT=8080
+`
+	require.NoError(t, os.WriteFile(envPath, []byte(envContent), 0o600))
+
+	type Config struct {
+		ServerHost string `mapstructure:"server_host" validate:"required"`
+		ServerPort int    `mapstructure:"server_port" validate:"required,min=1,max=65535"`
+	}
+
+	cfg, err := LoadFromEnv[Config](envPath)
+	require.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.ServerHost)
+	assert.Equal(t, 8080, cfg.ServerPort)
+}
+
+func TestLoadFromEnvWithValidation(t *testing.T) {
+	// Create test .env file with invalid port
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	envContent := `SERVER_HOST=localhost
+SERVER_PORT=99999
+`
+	require.NoError(t, os.WriteFile(envPath, []byte(envContent), 0o600))
+
+	type Config struct {
+		ServerHost string `mapstructure:"server_host" validate:"required"`
+		ServerPort int    `mapstructure:"server_port" validate:"required,min=1,max=65535"`
+	}
+
+	_, err := LoadFromEnv[Config](envPath)
+	assert.Error(t, err, "validation should fail for port > 65535")
+	assert.Contains(t, err.Error(), "validate")
+}
+
+func TestLoadFromEnvWithPrefix(t *testing.T) {
+	// Create test .env file without prefix in the file
+	// The prefix is added programmatically via WithENVPrefix
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	envContent := `SERVERHOST=localhost
+SERVERPORT=8080
+`
+	require.NoError(t, os.WriteFile(envPath, []byte(envContent), 0o600))
+
+	type Config struct {
+		ServerHost string `mapstructure:"serverhost" validate:"required"`
+		ServerPort int    `mapstructure:"serverport" validate:"required,min=1,max=65535"`
+	}
+
+	cfg, err := LoadFromEnvWithOptions[Config](envPath, WithENVPrefix("SERVER"))
+	require.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.ServerHost)
+	assert.Equal(t, 8080, cfg.ServerPort)
+}
+
+func TestLoadWithEnvFile(t *testing.T) {
+	// Create test .env file
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	envContent := `DATABASE_HOST=localhost
+DATABASE_PORT=5432
+`
+	require.NoError(t, os.WriteFile(envPath, []byte(envContent), 0o600))
+
+	// Create test YAML file
+	yamlPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `server:
+  host: "0.0.0.0"
+  port: 8080
+database:
+  host: "default-db"
+  port: 3306
+`
+	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
+
+	type Config struct {
+		Server struct {
+			Host string `validate:"required"`
+			Port int    `validate:"required,min=1,max=65535"`
+		} `validate:"required"`
+		Database struct {
+			Host string `validate:"required"`
+			Port int    `validate:"required,min=1,max=65535"`
+		} `validate:"required"`
+	}
+
+	// Load with .env file override
+	cfg, err := LoadWithOptions[Config](yamlPath, WithEnvFile(envPath))
+	require.NoError(t, err)
+	assert.Equal(t, "0.0.0.0", cfg.Server.Host, "server config from YAML")
+	assert.Equal(t, 8080, cfg.Server.Port, "server port from YAML")
+	assert.Equal(t, "localhost", cfg.Database.Host, "database host from .env")
+	assert.Equal(t, 5432, cfg.Database.Port, "database port from .env")
+}

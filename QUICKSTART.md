@@ -10,6 +10,8 @@ go get github.com/haipham22/govern
 
 ## Configuration Loading
 
+### Loading from YAML
+
 Load configuration from YAML files with environment variable override:
 
 **config.yaml**:
@@ -66,6 +68,46 @@ SERVER_PORT=9090 ./app
 # Override postgres host
 POSTGRES_HOST=prod.db.local ./app
 ```
+
+### Loading from .env File
+
+Load configuration directly from .env files:
+
+**.env**:
+```bash
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8080
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+```
+
+**main.go**:
+```go
+type Config struct {
+    ServerHost string `mapstructure:"SERVER_HOST" validate:"required"`
+    ServerPort int    `mapstructure:"SERVER_PORT" validate:"required,min=1,max=65535"`
+    DatabaseHost string `mapstructure:"DATABASE_HOST" validate:"required"`
+    DatabasePort int    `mapstructure:"DATABASE_PORT" validate:"required,min=1,max=65535"`
+}
+
+func main() {
+    cfg, err := config.LoadFromEnv[Config](".env")
+    if err != nil {
+        panic(err)
+    }
+}
+```
+
+### Combining YAML + .env
+
+```go
+cfg, err := config.LoadWithOptions[Config](
+    "config.yaml",
+    config.WithEnvFile(".env"),
+)
+```
+
+**Priority**: System ENV > .env file > YAML values
 
 ## Echo Server with JWT
 

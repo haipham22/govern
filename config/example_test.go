@@ -174,3 +174,85 @@ func Example_validation() {
 
 	// Output: Validation error: validate
 }
+
+// Example_envOnly demonstrates loading config from .env file only (no YAML).
+func Example_envOnly() {
+	// Create a temporary .env file for this example
+	tmpDir := os.TempDir()
+	envPath := filepath.Join(tmpDir, ".env-example")
+	envContent := `SERVER_HOST=0.0.0.0
+SERVER_PORT=8080
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+`
+	_ = os.WriteFile(envPath, []byte(envContent), 0o600)
+	defer os.Remove(envPath)
+
+	// Define your config structure
+	// Note: Use mapstructure tags for .env files
+	type Config struct {
+		ServerHost   string `mapstructure:"server_host" validate:"required"`
+		ServerPort   int    `mapstructure:"server_port" validate:"required,min=1,max=65535"`
+		DatabaseHost string `mapstructure:"database_host" validate:"required"`
+		DatabasePort int    `mapstructure:"database_port" validate:"required,min=1,max=65535"`
+	}
+
+	// Load config from .env file
+	cfg, err := config.LoadFromEnv[Config](envPath)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	// Use the config
+	fmt.Println(cfg.ServerHost, cfg.ServerPort)
+	// Output: 0.0.0.0 8080
+}
+
+// Example_envFile demonstrates loading YAML config with .env file override.
+func Example_envFile() {
+	// Create a temporary .env file
+	tmpDir := os.TempDir()
+	envPath := filepath.Join(tmpDir, ".env-override")
+	envContent := `DATABASE_HOST=production-db
+DATABASE_PORT=5432
+`
+	_ = os.WriteFile(envPath, []byte(envContent), 0o600)
+	defer os.Remove(envPath)
+
+	// Create a temporary YAML config file
+	yamlPath := filepath.Join(tmpDir, "config-override.yaml")
+	yamlContent := `server:
+  host: "localhost"
+  port: 8080
+
+database:
+  host: "localhost"
+  port: 3306
+`
+	_ = os.WriteFile(yamlPath, []byte(yamlContent), 0o600)
+	defer os.Remove(yamlPath)
+
+	// Define your config structure
+	type Config struct {
+		Server struct {
+			Host string `validate:"required"`
+			Port int    `validate:"required,min=1,max=65535"`
+		} `validate:"required"`
+		Database struct {
+			Host string `validate:"required"`
+			Port int    `validate:"required,min=1,max=65535"`
+		} `validate:"required"`
+	}
+
+	// Load YAML config with .env file override
+	cfg, err := config.LoadWithOptions[Config](yamlPath, config.WithEnvFile(envPath))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	// .env values override YAML values
+	fmt.Println(cfg.Database.Host)
+	// Output: production-db
+}

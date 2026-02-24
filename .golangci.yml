@@ -142,9 +142,6 @@ issues:
   # Maximum count of issues with the same text (0 = no limit)
   max-same-issues: 0
 
-  # Uniquify issues by line
-  uniq-by-line: true
-
 severity:
   # Default severity for issues
   default-severity: error

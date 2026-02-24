@@ -65,7 +65,7 @@ jobs:
         with:
           version: latest
           args: --timeout=5m
-          skip-build-cache: true
+          skip-cache: true
 
   build:
     name: Build

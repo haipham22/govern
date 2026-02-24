@@ -1,0 +1,5 @@
+[tools]
+go = "1.25"
+golangci-lint = "latest"
+pre-commit = "latest"
+python = "3.10"

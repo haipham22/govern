@@ -20,24 +20,27 @@ repos:
   # Local Go hooks
   - repo: local
     hooks:
-      - id: golangci-lint
-        name: golangci-lint
-        entry: golangci-lint run --fix
+      # Run goimports FIRST to sort and group imports
+      - id: goimports
+        name: goimports
+        entry: goimports -w -local github.com/haipham22/govern
         language: system
         types: [go]
-        pass_filenames: false
 
+      # Run gofmt after goimports for formatting
       - id: gofmt
         name: gofmt
         entry: gofmt -w
         language: system
         types: [go]
 
-      - id: goimports
-        name: goimports
-        entry: goimports -w -local github.com/haipham22/govern
+      # Run linters last (includes goimports internally, but that's OK)
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run --fix
         language: system
         types: [go]
+        pass_filenames: false
 
       - id: go-test
         name: go-test

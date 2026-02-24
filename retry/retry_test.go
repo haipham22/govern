@@ -11,229 +11,598 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPolicy_Do_Success(t *testing.T) {
-	p := NewPolicy()
-	calls := 0
+func TestPolicy_Do(t *testing.T) {
+	tests := []struct {
+		name        string
+		policy      *Policy
+		fn          func() error
+		wantErr     bool
+		errMsg      string
+		wantCalls   int
+		description string
+	}{
+		{
+			name:        "success after retries",
+			policy:      NewPolicy(),
+			wantErr:     false,
+			wantCalls:   2,
+			description: "should succeed on second attempt",
+		},
+		{
+			name:        "max attempts exceeded",
+			policy:      NewPolicy(MaxAttempts(3)),
+			wantErr:     true,
+			errMsg:      "max retries exceeded",
+			wantCalls:   3,
+			description: "should fail after max attempts",
+		},
+		{
+			name:        "zero attempts",
+			policy:      NewPolicy(MaxAttempts(1)),
+			wantErr:     true,
+			wantCalls:   1,
+			description: "should fail on single attempt",
+		},
+		{
+			name:        "last error returned",
+			policy:      NewPolicy(),
+			wantErr:     true,
+			errMsg:      "final error",
+			wantCalls:   3,
+			description: "should include last error in message",
+		},
+	}
 
-	err := p.Do(func() error {
-		calls++
-		if calls < 2 {
-			return errors.New("temporary error")
-		}
-		return nil
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
 
-	assert.NoError(t, err)
-	assert.Equal(t, 2, calls)
-}
+			fn := tt.fn
+			if fn == nil {
+				switch tt.name {
+				case "success after retries":
+					fn = func() error {
+						calls++
+						if calls < 2 {
+							return errors.New("temporary error")
+						}
+						return nil
+					}
+				case "max attempts exceeded", "zero attempts":
+					fn = func() error {
+						calls++
+						return errors.New("always fails")
+					}
+				case "last error returned":
+					fn = func() error {
+						calls++
+						return errors.New("final error")
+					}
+				}
+			}
 
-func TestPolicy_Do_MaxAttempts(t *testing.T) {
-	p := NewPolicy(MaxAttempts(3))
-	calls := 0
+			err := tt.policy.Do(fn)
 
-	err := p.Do(func() error {
-		calls++
-		return errors.New("always fails")
-	})
-
-	assert.Error(t, err)
-	assert.Equal(t, 3, calls)
-	assert.Contains(t, err.Error(), "max retries exceeded")
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.wantCalls, calls)
+		})
+	}
 }
 
 func TestPolicy_Do_MaxDuration(t *testing.T) {
-	p := NewPolicy(MaxDuration(100 * time.Millisecond))
-	calls := 0
+	tests := []struct {
+		name        string
+		policy      *Policy
+		fn          func() error
+		wantErr     bool
+		errMsg      string
+		maxCalls    int
+		description string
+	}{
+		{
+			name:        "deadline exceeded",
+			policy:      NewPolicy(MaxDuration(100 * time.Millisecond)),
+			wantErr:     true,
+			errMsg:      "deadline exceeded",
+			maxCalls:    2,
+			description: "should stop when max duration exceeded",
+		},
+		{
+			name:        "max duration with fast fail",
+			policy:      NewPolicy(MaxDuration(50*time.Millisecond), Backoff(NewConstantBackoff(30*time.Millisecond))),
+			wantErr:     true,
+			maxCalls:    2,
+			description: "should hit max duration before max attempts",
+		},
+	}
 
-	err := p.Do(func() error {
-		calls++
-		time.Sleep(60 * time.Millisecond)
-		return errors.New("always fails")
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "deadline exceeded")
+			fn := tt.fn
+			if fn == nil {
+				fn = func() error {
+					calls++
+					time.Sleep(10 * time.Millisecond)
+					return errors.New("always fails")
+				}
+			}
+
+			err := tt.policy.Do(fn)
+
+			assert.Error(t, err)
+			if tt.errMsg != "" {
+				assert.Contains(t, err.Error(), tt.errMsg)
+			}
+			assert.LessOrEqual(t, calls, tt.maxCalls)
+		})
+	}
 }
 
-func TestPolicy_DoWithContext_ContextCanceled(t *testing.T) {
-	p := NewPolicy()
-	ctx, cancel := context.WithCancel(context.Background())
-	calls := int32(0)
+func TestPolicy_Do_BackingOff(t *testing.T) {
+	tests := []struct {
+		name           string
+		policy         *Policy
+		fn             func() error
+		wantErr        bool
+		wantCalls      int
+		minElapsed     time.Duration
+		maxElapsed     time.Duration
+		expectedDelay  time.Duration
+		description    string
+	}{
+		{
+			name:       "backoff option applied",
+			policy:     NewPolicy(MaxAttempts(5), MaxDuration(time.Hour), Backoff(NewConstantBackoff(10*time.Millisecond))),
+			wantErr:    false,
+			wantCalls:  3,
+			minElapsed: 15 * time.Millisecond,
+			maxElapsed: 100 * time.Millisecond,
+		},
+		{
+			name:       "fast failure with backoff",
+			policy:     NewPolicy(MaxAttempts(5), MaxDuration(time.Hour), Backoff(NewConstantBackoff(10*time.Millisecond))),
+			wantErr:    true,
+			wantCalls:  5,
+			minElapsed: 40 * time.Millisecond,
+		},
+		{
+			name:       "long running success",
+			policy:     NewPolicy(MaxAttempts(1)),
+			wantErr:    false,
+			minElapsed: 50 * time.Millisecond,
+		},
+	}
 
-	done := make(chan error)
-	go func() {
-		done <- p.DoWithContext(ctx, func(ctx context.Context) error {
-			if atomic.AddInt32(&calls, 1) == 2 {
-				cancel()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			start := time.Now()
+
+			fn := tt.fn
+			if fn == nil {
+				switch tt.name {
+				case "backoff option applied":
+					fn = func() error {
+						calls++
+						if calls < 3 {
+							return errors.New("temp")
+						}
+						return nil
+					}
+				case "fast failure with backoff":
+					fn = func() error {
+						calls++
+						return errors.New("fail fast")
+					}
+				case "long running success":
+					fn = func() error {
+						time.Sleep(50 * time.Millisecond)
+						return nil
+					}
+				}
 			}
-			time.Sleep(10 * time.Millisecond)
-			return errors.New("fails")
-		})
-	}()
 
-	err := <-done
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "canceled")
-	assert.True(t, atomic.LoadInt32(&calls) <= 3)
+			err := tt.policy.Do(fn)
+			elapsed := time.Since(start)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			if tt.wantCalls > 0 {
+				assert.Equal(t, tt.wantCalls, calls)
+			}
+
+			if tt.minElapsed > 0 {
+				assert.True(t, elapsed >= tt.minElapsed, "elapsed %v should be >= %v", elapsed, tt.minElapsed)
+			}
+			if tt.maxElapsed > 0 {
+				assert.True(t, elapsed < tt.maxElapsed, "elapsed %v should be < %v", elapsed, tt.maxElapsed)
+			}
+		})
+	}
+}
+
+func TestPolicy_DoWithContext(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupCtx    func() (context.Context, context.CancelFunc)
+		wantErr     bool
+		errMsg      string
+		wantCalls   int
+		maxCalls    int
+		description string
+	}{
+		{
+			name: "context canceled during retry",
+			setupCtx: func() (context.Context, context.CancelFunc) {
+				return context.WithCancel(context.Background())
+			},
+			wantErr:  true,
+			errMsg:   "canceled",
+			maxCalls: 3,
+		},
+		{
+			name: "context already canceled",
+			setupCtx: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			wantErr:     true,
+			errMsg:      "canceled",
+			wantCalls:   0,
+			description: "should fail immediately if context canceled",
+		},
+		{
+			name: "passing context to function",
+			setupCtx: func() (context.Context, context.CancelFunc) {
+				return context.Background(), func() {}
+			},
+			wantErr:   false,
+			wantCalls: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPolicy()
+			ctx, cancel := tt.setupCtx()
+			defer cancel()
+
+			switch tt.name {
+			case "context canceled during retry":
+				calls := int32(0)
+				done := make(chan error)
+				go func() {
+					done <- p.DoWithContext(ctx, func(ctx context.Context) error {
+						if atomic.AddInt32(&calls, 1) == 2 {
+							cancel()
+						}
+						time.Sleep(10 * time.Millisecond)
+						return errors.New("fails")
+					})
+				}()
+
+				err := <-done
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+				assert.True(t, atomic.LoadInt32(&calls) <= 3)
+
+			case "context already canceled":
+				err := p.DoWithContext(ctx, func(ctx context.Context) error {
+					t.Fatal("function should not be called")
+					return nil
+				})
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+
+			case "passing context to function":
+				calls := 0
+				err := p.DoWithContext(ctx, func(ctx context.Context) error {
+					calls++
+					assert.NotNil(t, ctx)
+					if calls < 2 {
+						return errors.New("temp")
+					}
+					return nil
+				})
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantCalls, calls)
+			}
+		})
+	}
 }
 
 func TestExponentialBackoff(t *testing.T) {
-	b := NewExponentialBackoff(
-		BaseDelay(10*time.Millisecond),
-		Multiplier(2),
-		WithJitter(),
-	)
+	tests := []struct {
+		name         string
+		backoff      *exponentialBackoff
+		attempts     []int
+		minDelays    []time.Duration
+		maxDelays    []time.Duration
+		exactDelays  []time.Duration
+		description  string
+	}{
+		{
+			name: "with jitter",
+			backoff: NewExponentialBackoff(
+				BaseDelay(10*time.Millisecond),
+				Multiplier(2),
+				WithJitter(),
+			),
+			attempts:  []int{0, 1, 2},
+			minDelays: []time.Duration{7 * time.Millisecond, 15 * time.Millisecond, 30 * time.Millisecond},
+			maxDelays: []time.Duration{13 * time.Millisecond, 25 * time.Millisecond, 50 * time.Millisecond},
+		},
+		{
+			name: "with max delay and jitter",
+			backoff: NewExponentialBackoff(
+				BaseDelay(10*time.Millisecond),
+				Multiplier(10),
+				MaxDelay(50*time.Millisecond),
+			),
+			attempts:  []int{0, 10},
+			minDelays: []time.Duration{7 * time.Millisecond, 37 * time.Millisecond},
+			maxDelays: []time.Duration{13 * time.Millisecond, 63 * time.Millisecond},
+		},
+		{
+			name: "without jitter",
+			backoff: NewExponentialBackoff(
+				BaseDelay(10*time.Millisecond),
+				Multiplier(2),
+			),
+			attempts:    []int{0, 1, 2},
+			exactDelays: []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond},
+		},
+		{
+			name: "custom jitter ratio",
+			backoff: NewExponentialBackoff(
+				BaseDelay(100*time.Millisecond),
+				JitterRatio(0.5),
+			),
+			attempts:  []int{1},
+			minDelays: []time.Duration{100 * time.Millisecond},
+			maxDelays: []time.Duration{300 * time.Millisecond},
+		},
+	}
 
-	// Jitter affects all attempts including 0
-	// Attempt 0: 10ms ± 25% = 7.5ms to 12.5ms
-	delay0 := b.Delay(0)
-	assert.True(t, delay0 >= 7*time.Millisecond && delay0 <= 13*time.Millisecond)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "without jitter" {
+				tt.backoff.jitter = false
+			}
 
-	// Attempt 1: 10ms * 2 = 20ms ± 25% = 15ms to 25ms
-	delay1 := b.Delay(1)
-	assert.True(t, delay1 >= 15*time.Millisecond && delay1 <= 25*time.Millisecond)
+			for i, attempt := range tt.attempts {
+				delay := tt.backoff.Delay(attempt)
 
-	// Attempt 2: 10ms * 4 = 40ms ± 25% = 30ms to 50ms
-	delay2 := b.Delay(2)
-	assert.True(t, delay2 >= 30*time.Millisecond && delay2 <= 50*time.Millisecond)
-}
-
-func TestExponentialBackoff_MaxDelay(t *testing.T) {
-	b := NewExponentialBackoff(
-		BaseDelay(10*time.Millisecond),
-		Multiplier(10),
-		MaxDelay(50*time.Millisecond),
-	)
-
-	// Jitter affects attempt 0 too
-	delay0 := b.Delay(0)
-	assert.True(t, delay0 >= 7*time.Millisecond && delay0 <= 13*time.Millisecond)
-
-	// With max delay and jitter (default 0.25 ratio):
-	// Base delay is capped at 50ms, jitterRange = 50ms * 0.25 = 12.5ms
-	// Range: (50ms - 12.5ms) to (50ms - 12.5ms + 2*12.5ms) = 37.5ms to 62.5ms
-	delay10 := b.Delay(10)
-	assert.True(t, delay10 >= 37*time.Millisecond && delay10 <= 63*time.Millisecond)
-}
-
-func TestExponentialBackoff_NoJitter(t *testing.T) {
-	b := NewExponentialBackoff(
-		BaseDelay(10*time.Millisecond),
-		Multiplier(2),
-	)
-	// Disable jitter for deterministic test
-	b.jitter = false
-
-	assert.Equal(t, 10*time.Millisecond, b.Delay(0))
-	assert.Equal(t, 20*time.Millisecond, b.Delay(1))
-	assert.Equal(t, 40*time.Millisecond, b.Delay(2))
+				if len(tt.exactDelays) > 0 {
+					assert.Equal(t, tt.exactDelays[i], delay)
+				} else {
+					assert.True(t, delay >= tt.minDelays[i] && delay <= tt.maxDelays[i],
+						"attempt %d: delay %v should be between %v and %v", attempt, delay, tt.minDelays[i], tt.maxDelays[i])
+				}
+			}
+		})
+	}
 }
 
 func TestLinearBackoff(t *testing.T) {
-	l := NewLinearBackoff(
-		LinearBaseDelay(10*time.Millisecond),
-		LinearIncrement(5*time.Millisecond),
-	)
+	tests := []struct {
+		name        string
+		backoff     *linearBackoff
+		attempts    []int
+		expected    []time.Duration
+		description string
+	}{
+		{
+			name: "basic linear increment",
+			backoff: NewLinearBackoff(
+				LinearBaseDelay(10*time.Millisecond),
+				LinearIncrement(5*time.Millisecond),
+			),
+			attempts: []int{0, 1, 2},
+			expected: []time.Duration{10 * time.Millisecond, 15 * time.Millisecond, 20 * time.Millisecond},
+		},
+		{
+			name: "with max delay",
+			backoff: NewLinearBackoff(
+				LinearBaseDelay(10*time.Millisecond),
+				LinearIncrement(100*time.Millisecond),
+				LinearMaxDelay(50*time.Millisecond),
+			),
+			attempts: []int{0, 10},
+			expected: []time.Duration{10 * time.Millisecond, 50 * time.Millisecond},
+		},
+	}
 
-	assert.Equal(t, 10*time.Millisecond, l.Delay(0))
-	assert.Equal(t, 15*time.Millisecond, l.Delay(1))
-	assert.Equal(t, 20*time.Millisecond, l.Delay(2))
-}
-
-func TestLinearBackoff_MaxDelay(t *testing.T) {
-	l := NewLinearBackoff(
-		LinearBaseDelay(10*time.Millisecond),
-		LinearIncrement(100*time.Millisecond),
-		LinearMaxDelay(50*time.Millisecond),
-	)
-
-	assert.Equal(t, 10*time.Millisecond, l.Delay(0))
-	assert.Equal(t, 50*time.Millisecond, l.Delay(10))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i, attempt := range tt.attempts {
+				delay := tt.backoff.Delay(attempt)
+				assert.Equal(t, tt.expected[i], delay, "attempt %d", attempt)
+			}
+		})
+	}
 }
 
 func TestConstantBackoff(t *testing.T) {
-	c := NewConstantBackoff(50 * time.Millisecond)
+	tests := []struct {
+		name        string
+		delay       time.Duration
+		attempts    []int
+		expected    time.Duration
+		description string
+	}{
+		{
+			name:     "constant delay",
+			delay:    50 * time.Millisecond,
+			attempts: []int{0, 10},
+			expected: 50 * time.Millisecond,
+		},
+	}
 
-	assert.Equal(t, 50*time.Millisecond, c.Delay(0))
-	assert.Equal(t, 50*time.Millisecond, c.Delay(10))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewConstantBackoff(tt.delay)
+			for _, attempt := range tt.attempts {
+				assert.Equal(t, tt.expected, c.Delay(attempt), "attempt %d", attempt)
+			}
+		})
+	}
 }
 
-func TestDo_Convenience(t *testing.T) {
-	calls := 0
-	err := Do(func() error {
-		calls++
-		if calls < 3 {
-			return errors.New("temp")
-		}
-		return nil
-	})
+func TestConvenience_Functions(t *testing.T) {
+	tests := []struct {
+		name        string
+		fn          func() error
+		ctxFn       func(ctx context.Context) error
+		wantErr     bool
+		wantCalls   int
+		description string
+	}{
+		{
+			name: "Do convenience function",
+			fn: func() error {
+				t.Fatal("should be overridden")
+				return nil
+			},
+			wantErr:     false,
+			wantCalls:   3,
+			description: "should retry with default policy",
+		},
+		{
+			name: "DoWithContext convenience function",
+			ctxFn: func(ctx context.Context) error {
+				t.Fatal("should be overridden")
+				return nil
+			},
+			wantErr:     false,
+			wantCalls:   2,
+			description: "should retry with context",
+		},
+	}
 
-	assert.NoError(t, err)
-	assert.Equal(t, 3, calls)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			switch tt.name {
+			case "Do convenience function":
+				calls := 0
+				err := Do(func() error {
+					calls++
+					if calls < 3 {
+						return errors.New("temp")
+					}
+					return nil
+				})
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantCalls, calls)
 
-func TestDoWithContext_Convenience(t *testing.T) {
-	ctx := context.Background()
-	calls := 0
-	err := DoWithContext(ctx, func(ctx context.Context) error {
-		calls++
-		if calls < 2 {
-			return errors.New("temp")
-		}
-		return nil
-	})
-
-	assert.NoError(t, err)
-	assert.Equal(t, 2, calls)
-}
-
-func TestBackoff_Option(t *testing.T) {
-	p := NewPolicy(
-		MaxAttempts(5),
-		MaxDuration(time.Hour),
-		Backoff(NewConstantBackoff(10*time.Millisecond)),
-	)
-
-	calls := 0
-	start := time.Now()
-	_ = p.Do(func() error {
-		calls++
-		if calls < 3 {
-			return errors.New("temp")
-		}
-		return nil
-	})
-	elapsed := time.Since(start)
-
-	assert.Equal(t, 3, calls)
-	// With 2 retries at 10ms each, should be around 20ms
-	assert.True(t, elapsed >= 15*time.Millisecond && elapsed < 100*time.Millisecond)
+			case "DoWithContext convenience function":
+				ctx := context.Background()
+				calls := 0
+				err := DoWithContext(ctx, func(ctx context.Context) error {
+					calls++
+					if calls < 2 {
+						return errors.New("temp")
+					}
+					return nil
+				})
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantCalls, calls)
+			}
+		})
+	}
 }
 
 func TestRetryIf(t *testing.T) {
-	retryableErr := errors.New("retryable")
-	nonRetryableErr := errors.New("non-retryable")
-
-	calls := 0
-	// Only retry the specific retryableErr
-	check := func(err error) bool {
-		return err == retryableErr
+	tests := []struct {
+		name        string
+		ctxFn       func(ctx context.Context) error
+		check       func(error) bool
+		wantErr     bool
+		wantCalls   int
+		description string
+	}{
+		{
+			name: "retry on specific errors",
+			ctxFn: func(ctx context.Context) error {
+				t.Fatal("should be overridden")
+				return nil
+			},
+			wantErr:     true,
+			wantCalls:   2,
+			description: "should stop on non-retryable error",
+		},
+		{
+			name: "stop on non-retryable error",
+			ctxFn: func(ctx context.Context) error {
+				t.Fatal("should be overridden")
+				return nil
+			},
+			wantErr:     true,
+			wantCalls:   3,
+			description: "should stop at specific error",
+		},
 	}
 
-	fn := RetryIf(func(ctx context.Context) error {
-		calls++
-		if calls == 1 {
-			return retryableErr
-		}
-		return nonRetryableErr
-	}, check)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPolicy()
 
-	p := NewPolicy()
-	err := p.DoWithContext(context.Background(), fn)
+			switch tt.name {
+			case "retry on specific errors":
+				retryableErr := errors.New("retryable")
+				nonRetryableErr := errors.New("non-retryable")
+				calls := 0
 
-	assert.Error(t, err)
-	// Should stop on non-retryable error after first retry
-	assert.Equal(t, 2, calls)
+				check := func(err error) bool {
+					return err == retryableErr
+				}
+
+				fn := RetryIf(func(ctx context.Context) error {
+					calls++
+					if calls == 1 {
+						return retryableErr
+					}
+					return nonRetryableErr
+				}, check)
+
+				err := p.DoWithContext(context.Background(), fn)
+				assert.Error(t, err)
+				assert.Equal(t, tt.wantCalls, calls)
+
+			case "stop on non-retryable error":
+				calls := 0
+				check := func(err error) bool {
+					return err.Error() != "stop"
+				}
+
+				fn := RetryIf(func(ctx context.Context) error {
+					calls++
+					if calls == 3 {
+						return errors.New("stop")
+					}
+					return errors.New("continue")
+				}, check)
+
+				err := p.DoWithContext(context.Background(), fn)
+				assert.Error(t, err)
+				assert.Equal(t, tt.wantCalls, calls)
+			}
+		})
+	}
 }
 
 func TestRetrySpecificErrors(t *testing.T) {
@@ -241,124 +610,74 @@ func TestRetrySpecificErrors(t *testing.T) {
 	err2 := errors.New("error 2")
 	err3 := errors.New("error 3")
 
-	check := RetrySpecificErrors(err1, err2)
+	tests := []struct {
+		name     string
+		errors   []error
+		testErr  error
+		wantBool bool
+	}{
+		{
+			name:     "matching first error",
+			errors:   []error{err1, err2},
+			testErr:  err1,
+			wantBool: true,
+		},
+		{
+			name:     "matching second error",
+			errors:   []error{err1, err2},
+			testErr:  err2,
+			wantBool: true,
+		},
+		{
+			name:     "non-matching error",
+			errors:   []error{err1, err2},
+			testErr:  err3,
+			wantBool: false,
+		},
+	}
 
-	assert.True(t, check(err1))
-	assert.True(t, check(err2))
-	assert.False(t, check(err3))
-}
-
-func TestPolicy_ZeroAttempts(t *testing.T) {
-	p := NewPolicy(MaxAttempts(1))
-	calls := 0
-
-	err := p.Do(func() error {
-		calls++
-		return errors.New("fails")
-	})
-
-	assert.Error(t, err)
-	assert.Equal(t, 1, calls)
-}
-
-func TestExponentialBackoff_CustomJitterRatio(t *testing.T) {
-	b := NewExponentialBackoff(
-		BaseDelay(100*time.Millisecond),
-		JitterRatio(0.5), // 50% jitter
-	)
-
-	delay := b.Delay(1)
-	// 100ms * 2 = 200ms, with +/- 100ms jitter = 100-300ms range
-	assert.True(t, delay >= 100*time.Millisecond && delay <= 300*time.Millisecond)
-}
-
-func TestPolicy_ContextAlreadyCanceled(t *testing.T) {
-	p := NewPolicy()
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := p.DoWithContext(ctx, func(ctx context.Context) error {
-		return nil
-	})
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "canceled")
-}
-
-func TestPolicy_LongRunningSuccess(t *testing.T) {
-	p := NewPolicy(MaxAttempts(1))
-
-	err := p.Do(func() error {
-		time.Sleep(50 * time.Millisecond)
-		return nil
-	})
-
-	assert.NoError(t, err)
-}
-
-func TestPolicy_FastFailure(t *testing.T) {
-	p := NewPolicy(MaxAttempts(5), MaxDuration(time.Hour), Backoff(NewConstantBackoff(10*time.Millisecond)))
-
-	calls := 0
-	start := time.Now()
-	err := p.Do(func() error {
-		calls++
-		return errors.New("fail fast")
-	})
-	elapsed := time.Since(start)
-
-	assert.Error(t, err)
-	assert.Equal(t, 5, calls)
-	// 5 attempts, 4 delays of 10ms each = 40ms minimum
-	assert.True(t, elapsed >= 40*time.Millisecond)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := RetrySpecificErrors(tt.errors...)
+			assert.Equal(t, tt.wantBool, check(tt.testErr))
+		})
+	}
 }
 
 func TestNonRetryableError(t *testing.T) {
 	baseErr := errors.New("base error")
 	wrapped := &nonRetryableError{err: baseErr}
 
-	assert.Contains(t, wrapped.Error(), "non-retryable")
-	assert.Equal(t, baseErr, wrapped.Unwrap())
-}
-
-func TestRetryIf_WithNonRetryable(t *testing.T) {
-	calls := 0
-	check := func(err error) bool {
-		return err.Error() != "stop"
+	tests := []struct {
+		name     string
+		err      error
+		contains string
+		unwrapped error
+	}{
+		{
+			name:      "error message",
+			err:       wrapped,
+			contains:  "non-retryable",
+		},
+		{
+			name:      "unwrapped error",
+			err:       wrapped,
+			unwrapped: baseErr,
+		},
 	}
 
-	fn := RetryIf(func(ctx context.Context) error {
-		calls++
-		if calls == 3 {
-			return errors.New("stop")
-		}
-		return errors.New("continue")
-	}, check)
-
-	p := NewPolicy()
-	err := p.DoWithContext(context.Background(), fn)
-
-	assert.Error(t, err)
-	// Should stop at 3rd call (non-retryable)
-	assert.Equal(t, 3, calls)
-}
-
-func TestPolicy_DoWithContext_PassingContext(t *testing.T) {
-	p := NewPolicy()
-	ctx := context.Background()
-
-	calls := 0
-	err := p.DoWithContext(ctx, func(ctx context.Context) error {
-		calls++
-		assert.NotNil(t, ctx)
-		if calls < 2 {
-			return errors.New("temp")
-		}
-		return nil
-	})
-
-	assert.NoError(t, err)
-	assert.Equal(t, 2, calls)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.contains != "" {
+				assert.Contains(t, tt.err.Error(), tt.contains)
+			}
+			if tt.unwrapped != nil {
+				wrapped, ok := tt.err.(*nonRetryableError)
+				assert.True(t, ok)
+				assert.Equal(t, tt.unwrapped, wrapped.Unwrap())
+			}
+		})
+	}
 }
 
 func TestBackoff_Strategies(t *testing.T) {
@@ -377,7 +696,6 @@ func TestBackoff_Strategies(t *testing.T) {
 			for i, expected := range s.expected {
 				delay := s.name.Delay(i)
 				if s.jittered {
-					// Allow tolerance for jittered backoff
 					assert.InDelta(t, float64(expected), float64(delay), float64(expected)*0.3)
 				} else {
 					assert.Equal(t, expected, delay)
@@ -387,38 +705,44 @@ func TestBackoff_Strategies(t *testing.T) {
 	}
 }
 
-func TestPolicy_MaxDurationWithFastFail(t *testing.T) {
-	p := NewPolicy(MaxDuration(50*time.Millisecond), Backoff(NewConstantBackoff(30*time.Millisecond)))
-
-	calls := 0
-	err := p.Do(func() error {
-		calls++
-		time.Sleep(10 * time.Millisecond)
-		return errors.New("fail")
-	})
-
-	assert.Error(t, err)
-	// Should hit max duration before max attempts
-	assert.LessOrEqual(t, calls, 2)
-}
-
 func TestDefaultPolicy(t *testing.T) {
 	p := NewPolicy()
 
-	assert.Equal(t, 3, p.maxAttempts)
-	assert.Equal(t, time.Minute, p.maxDuration)
-	assert.IsType(t, &exponentialBackoff{}, p.backoff)
-}
+	tests := []struct {
+		name      string
+		field     string
+		expected  interface{}
+		actual    interface{}
+		checkType bool
+		typeName  string
+	}{
+		{
+			name:     "max attempts default",
+			field:    "maxAttempts",
+			expected: 3,
+			actual:   p.maxAttempts,
+		},
+		{
+			name:     "max duration default",
+			field:    "maxDuration",
+			expected: time.Minute,
+			actual:   p.maxDuration,
+		},
+		{
+			name:     "backoff type",
+			field:    "backoff",
+			checkType: true,
+			typeName: "*retry.exponentialBackoff",
+		},
+	}
 
-func TestPolicy_LastErrorReturned(t *testing.T) {
-	p := NewPolicy()
-
-	expectedErr := errors.New("final error")
-	err := p.Do(func() error {
-		return expectedErr
-	})
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "max retries exceeded")
-	assert.Contains(t, err.Error(), "final error")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.checkType {
+				assert.IsType(t, &exponentialBackoff{}, p.backoff)
+			} else {
+				assert.Equal(t, tt.expected, tt.actual)
+			}
+		})
+	}
 }

@@ -45,118 +45,138 @@ func TestRegistry_Unregister(t *testing.T) {
 	})
 }
 
-func TestRegistry_Run_Passing(t *testing.T) {
-	r := New()
+func TestRegistry_Run(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(*Registry)
+		wantStatus Status
+		validate func(*testing.T, *Response)
+	}{
+		{
+			name: "all checks passing",
+			setup: func(r *Registry) {
+				r.Register("db", func(ctx context.Context) error {
+					return nil
+				})
+				r.Register("cache", func(ctx context.Context) error {
+					return nil
+				})
+			},
+			wantStatus: StatusPassing,
+			validate: func(t *testing.T, resp *Response) {
+				assert.Len(t, resp.Checks, 2)
+				assert.Equal(t, StatusPassing, resp.Checks["db"].Status)
+				assert.Equal(t, StatusPassing, resp.Checks["cache"].Status)
+			},
+		},
+		{
+			name: "one check failing",
+			setup: func(r *Registry) {
+				r.Register("db", func(ctx context.Context) error {
+					return nil
+				})
+				r.Register("cache", func(ctx context.Context) error {
+					return errors.New("connection failed")
+				})
+			},
+			wantStatus: StatusFailing,
+			validate: func(t *testing.T, resp *Response) {
+				assert.Len(t, resp.Checks, 2)
+				assert.Equal(t, StatusPassing, resp.Checks["db"].Status)
+				assert.Equal(t, StatusFailing, resp.Checks["cache"].Status)
+				assert.Equal(t, "connection failed", resp.Checks["cache"].Message)
+			},
+		},
+		{
+			name: "check timeout",
+			setup: func(r *Registry) {
+				r.Register("slow", func(ctx context.Context) error {
+					select {
+					case <-time.After(10 * time.Second):
+						return nil
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}, WithTimeout(100*time.Millisecond))
+			},
+			wantStatus: StatusFailing,
+			validate: func(t *testing.T, resp *Response) {
+				assert.Equal(t, StatusFailing, resp.Checks["slow"].Status)
+				assert.Equal(t, "timeout", resp.Checks["slow"].Message)
+			},
+		},
+		{
+			name: "context canceled during run",
+			setup: func(r *Registry) {
+				r.Register("check", func(ctx context.Context) error {
+					select {
+					case <-time.After(5 * time.Second):
+						return nil
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				})
+			},
+			wantStatus: StatusFailing,
+			validate: func(t *testing.T, resp *Response) {
+				// Check fails when context is canceled
+				assert.Equal(t, StatusFailing, resp.Status)
+			},
+		},
+		{
+			name: "panic with DisablePanic option",
+			setup: func(r *Registry) {
+				r.Register("panic", func(ctx context.Context) error {
+					panic("test panic")
+				}, DisablePanic())
+			},
+			wantStatus: StatusFailing,
+			validate: func(t *testing.T, resp *Response) {
+				assert.Equal(t, StatusFailing, resp.Checks["panic"].Status)
+				assert.Contains(t, resp.Checks["panic"].Message, "panic")
+			},
+		},
+		{
+			name: "panic without DisablePanic option",
+			setup: func(r *Registry) {
+				r.Register("panic", func(ctx context.Context) error {
+					panic("test panic")
+				})
+			},
+			wantStatus: StatusFailing,
+			validate: func(t *testing.T, resp *Response) {
+				// Panic in goroutine doesn't propagate - the check will fail instead
+				assert.Contains(t, resp.Checks["panic"].Message, "panic")
+			},
+		},
+	}
 
-	r.Register("db", func(ctx context.Context) error {
-		return nil
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := New()
+			tt.setup(r)
 
-	r.Register("cache", func(ctx context.Context) error {
-		return nil
-	})
+			var resp *Response
+			if tt.name == "context canceled during run" {
+				ctx, cancel := context.WithCancel(context.Background())
+				go func() {
+					time.Sleep(50 * time.Millisecond)
+					cancel()
+				}()
+				resp = r.Run(ctx)
+			} else {
+				resp = r.Run(context.Background())
+			}
 
-	resp := r.Run(context.Background())
-	assert.Equal(t, StatusPassing, resp.Status)
-	assert.Len(t, resp.Checks, 2)
-	assert.Equal(t, StatusPassing, resp.Checks["db"].Status)
-	assert.Equal(t, StatusPassing, resp.Checks["cache"].Status)
+			assert.Equal(t, tt.wantStatus, resp.Status)
+			if tt.validate != nil {
+				tt.validate(t, resp)
+			}
+		})
+	}
 }
 
-func TestRegistry_Run_Failing(t *testing.T) {
-	r := New()
-
-	r.Register("db", func(ctx context.Context) error {
-		return nil
-	})
-
-	r.Register("cache", func(ctx context.Context) error {
-		return errors.New("connection failed")
-	})
-
-	resp := r.Run(context.Background())
-	assert.Equal(t, StatusFailing, resp.Status)
-	assert.Len(t, resp.Checks, 2)
-	assert.Equal(t, StatusPassing, resp.Checks["db"].Status)
-	assert.Equal(t, StatusFailing, resp.Checks["cache"].Status)
-	assert.Equal(t, "connection failed", resp.Checks["cache"].Message)
-}
-
-func TestRegistry_Run_Timeout(t *testing.T) {
-	r := New()
-
-	r.Register("slow", func(ctx context.Context) error {
-		select {
-		case <-time.After(10 * time.Second):
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}, WithTimeout(100*time.Millisecond))
-
-	resp := r.Run(context.Background())
-	assert.Equal(t, StatusFailing, resp.Status)
-	assert.Equal(t, StatusFailing, resp.Checks["slow"].Status)
-	assert.Equal(t, "timeout", resp.Checks["slow"].Message)
-}
-
-func TestRegistry_Run_ContextCanceled(t *testing.T) {
-	r := New()
-
-	r.Register("check", func(ctx context.Context) error {
-		select {
-		case <-time.After(5 * time.Second):
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
-
-	resp := r.Run(ctx)
-	assert.Equal(t, StatusFailing, resp.Status)
-}
-
-func TestRegistry_Run_DisablePanic(t *testing.T) {
-	r := New()
-
-	r.Register("panic", func(ctx context.Context) error {
-		panic("test panic")
-	}, DisablePanic())
-
-	resp := r.Run(context.Background())
-	assert.Equal(t, StatusFailing, resp.Status)
-	assert.Equal(t, StatusFailing, resp.Checks["panic"].Status)
-	assert.Contains(t, resp.Checks["panic"].Message, "panic")
-}
-
-func TestRegistry_Run_WithPanic(t *testing.T) {
-	r := New()
-
-	r.Register("panic", func(ctx context.Context) error {
-		panic("test panic")
-	})
-
-	// Panic in goroutine doesn't propagate - the check will fail instead
-	resp := r.Run(context.Background())
-	assert.Equal(t, StatusFailing, resp.Status)
-	assert.Contains(t, resp.Checks["panic"].Message, "panic")
-}
-
-func TestRegistry_Empty(t *testing.T) {
-	r := New()
-
-	resp := r.Run(context.Background())
-	assert.Equal(t, StatusPassing, resp.Status)
-	assert.Empty(t, resp.Checks)
-}
-
-func TestRegistry_WithTimeout_Option(t *testing.T) {
+func TestRegistry_Run_TimeoutOption(t *testing.T) {
 	r := New()
 
 	r.Register("fast", func(ctx context.Context) error {
@@ -172,6 +192,14 @@ func TestRegistry_WithTimeout_Option(t *testing.T) {
 	assert.Equal(t, StatusPassing, resp.Checks["fast"].Status)
 	assert.Equal(t, StatusFailing, resp.Checks["slow"].Status)
 	assert.Equal(t, "timeout", resp.Checks["slow"].Message)
+}
+
+func TestRegistry_Run_Empty(t *testing.T) {
+	r := New()
+
+	resp := r.Run(context.Background())
+	assert.Equal(t, StatusPassing, resp.Status)
+	assert.Empty(t, resp.Checks)
 }
 
 func TestCheckResult_Duration(t *testing.T) {

@@ -1,8 +1,6 @@
 package metrics
 
-import (
-	"github.com/prometheus/client_golang/prometheus"
-)
+import "github.com/prometheus/client_golang/prometheus"
 
 // Counter is a monotonic counter metric.
 type Counter struct {

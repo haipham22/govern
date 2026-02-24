@@ -1,8 +1,6 @@
 package middleware
 
-import (
-	"net/http"
-)
+import "net/http"
 
 // CORSConfig configures CORS middleware.
 type CORSConfig struct {

@@ -1,8 +1,6 @@
 package redis
 
-import (
-	"github.com/redis/go-redis/v9"
-)
+import "github.com/redis/go-redis/v9"
 
 const (
 	DefaultPoolSize = 100

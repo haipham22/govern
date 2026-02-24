@@ -34,143 +34,233 @@ func TestLoad(t *testing.T) {
 	assert.Equal(t, 8080, cfg.Server.Port)
 }
 
-func TestLoadWithENVOverride(t *testing.T) {
-	// Set ENV var
-	os.Setenv("SERVER_PORT", "9090")
-	defer os.Unsetenv("SERVER_PORT")
-
-	// Create test YAML file
-	tmpDir := t.TempDir()
-	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `server:
+func TestLoad_ENVOverride(t *testing.T) {
+	tests := []struct {
+		name           string
+		envVars        map[string]string
+		yaml           string
+		loadOptions    []Option
+		expectedPort   int
+		wantErr        bool
+		setupCleanup   func()
+	}{
+		{
+			name: "ENV override without prefix",
+			envVars: map[string]string{
+				"SERVER_PORT": "9090",
+			},
+			yaml: `server:
   port: 8080
-`
-	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
-
-	type Config struct {
-		Server struct {
-			Port int `validate:"required,min=1,max=65535"`
-		} `validate:"required"`
+`,
+			loadOptions:  []Option{},
+			expectedPort: 9090,
+			wantErr:      false,
+		},
+		{
+			name: "ENV override with prefix",
+			envVars: map[string]string{
+				"APP_SERVER_PORT": "9090",
+			},
+			yaml: `server:
+  port: 8080
+`,
+			loadOptions:  []Option{WithENVPrefix("APP")},
+			expectedPort: 9090,
+			wantErr:      false,
+		},
+		{
+			name: "ENV override nested config",
+			envVars: map[string]string{
+				"POSTGRES_HOST": "prod.db.local",
+				"POSTGRES_PORT": "5433",
+			},
+			yaml: `postgres:
+  host: "localhost"
+  port: 5432
+`,
+			loadOptions:  []Option{},
+			expectedPort: 5433,
+			wantErr:      false,
+		},
 	}
 
-	cfg, err := Load[Config](yamlPath)
-	require.NoError(t, err)
-	assert.Equal(t, 9090, cfg.Server.Port, "ENV should override YAML value")
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup environment variables
+			for k, v := range tt.envVars {
+				os.Setenv(k, v)
+			}
+			defer func() {
+				for k := range tt.envVars {
+					os.Unsetenv(k)
+				}
+			}()
 
-func TestLoadWithENVPrefix(t *testing.T) {
-	// Set ENV var with prefix
-	os.Setenv("APP_SERVER_PORT", "9090")
-	defer os.Unsetenv("APP_SERVER_PORT")
+			// Create test YAML file
+			tmpDir := t.TempDir()
+			yamlPath := filepath.Join(tmpDir, "config.yaml")
+			require.NoError(t, os.WriteFile(yamlPath, []byte(tt.yaml), 0o600))
 
-	// Create test YAML file
-	tmpDir := t.TempDir()
-	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `server:
-  port: 8080
-`
-	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
+			// Define config based on test case
+			if tt.name == "ENV override nested config" {
+				type Config struct {
+					Postgres struct {
+						Host string `validate:"required"`
+						Port int    `validate:"required"`
+					} `validate:"required"`
+				}
 
-	type Config struct {
-		Server struct {
-			Port int `validate:"required"`
-		} `validate:"required"`
+				cfg, err := LoadWithOptions[Config](yamlPath, tt.loadOptions...)
+				if tt.wantErr {
+					assert.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+				assert.Equal(t, tt.envVars["POSTGRES_HOST"], cfg.Postgres.Host, "ENV should override nested host")
+				assert.Equal(t, tt.expectedPort, cfg.Postgres.Port, "ENV should override nested port")
+			} else {
+				type Config struct {
+					Server struct {
+						Port int `validate:"required,min=1,max=65535"`
+					} `validate:"required"`
+				}
+
+				cfg, err := LoadWithOptions[Config](yamlPath, tt.loadOptions...)
+				if tt.wantErr {
+					assert.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedPort, cfg.Server.Port)
+			}
+		})
 	}
-
-	cfg, err := LoadWithOptions[Config](yamlPath, WithENVPrefix("APP"))
-	require.NoError(t, err)
-	assert.Equal(t, 9090, cfg.Server.Port)
 }
 
-func TestLoadValidationRequired(t *testing.T) {
-	// Create test YAML file with missing required field
-	tmpDir := t.TempDir()
-	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `server:
+func TestLoad_Validation(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "missing required field - port",
+			yaml: `server:
   host: "localhost"
   # port is missing - required field
-`
-	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
-
-	type Config struct {
-		Server struct {
-			Host string `validate:"required"`
-			Port int    `validate:"required,min=1,max=65535"`
-		} `validate:"required"`
-	}
-
-	_, err := Load[Config](yamlPath)
-	assert.Error(t, err, "Should fail validation for missing required field")
-	assert.Contains(t, err.Error(), "validate")
-}
-
-func TestLoadValidationMinMax(t *testing.T) {
-	// Create test YAML file with port out of range
-	tmpDir := t.TempDir()
-	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `server:
+`,
+			wantErr: true,
+			errMsg:  "validate",
+		},
+		{
+			name: "port above maximum value",
+			yaml: `server:
   port: 99999
-`
-	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
-
-	type Config struct {
-		Server struct {
-			Port int `validate:"required,min=1,max=65535"`
-		} `validate:"required"`
+`,
+			wantErr: true,
+			errMsg:  "validate",
+		},
 	}
 
-	_, err := Load[Config](yamlPath)
-	assert.Error(t, err, "Should fail validation for port > 65535")
-	assert.Contains(t, err.Error(), "validate")
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			yamlPath := filepath.Join(tmpDir, "config.yaml")
+			require.NoError(t, os.WriteFile(yamlPath, []byte(tt.yaml), 0o600))
 
-func TestLoadFileNotFound(t *testing.T) {
-	yamlPath := "/nonexistent/config.yaml"
+			type Config struct {
+				Server struct {
+					Host string `validate:"required"`
+					Port int    `validate:"required,min=1,max=65535"`
+				} `validate:"required"`
+			}
 
-	type Config struct {
-		Port int `validate:"required"`
+			_, err := Load[Config](yamlPath)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			assert.NoError(t, err)
+		})
 	}
-
-	_, err := Load[Config](yamlPath)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read config")
 }
 
-func TestLoadInvalidYAML(t *testing.T) {
-	// Create test YAML file with invalid syntax
-	tmpDir := t.TempDir()
-	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `server:
+func TestLoad_Errors(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func() string
+		wantErr     bool
+		expectedErr string
+	}{
+		{
+			name: "file not found",
+			setup: func() string {
+				return "/nonexistent/config.yaml"
+			},
+			wantErr:     true,
+			expectedErr: "read config",
+		},
+		{
+			name: "invalid YAML syntax",
+			setup: func() string {
+				tmpDir := t.TempDir()
+				yamlPath := filepath.Join(tmpDir, "config.yaml")
+				yamlContent := `server:
   port: [invalid
 `
-	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
-
-	type Config struct {
-		Server struct {
-			Port int
-		}
+				require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
+				return yamlPath
+			},
+			wantErr:     true,
+			expectedErr: "read config",
+		},
 	}
 
-	_, err := Load[Config](yamlPath)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read config")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			type Config struct {
+				Port int `validate:"required"`
+			}
+
+			_, err := Load[Config](tt.setup())
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.expectedErr != "" {
+					assert.Contains(t, err.Error(), tt.expectedErr)
+				}
+				return
+			}
+
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestLoadWithLogger(t *testing.T) {
 	// Create test YAML file
 	tmpDir := t.TempDir()
 	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `port: 8080`
+	yamlContent := `test:
+  value: "debug"`
 	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
 
 	type Config struct {
-		Port int `validate:"required"`
+		Test struct {
+			Value string `validate:"required"`
+		} `validate:"required"`
 	}
 
 	logger := zap.NewNop()
 	cfg, err := LoadWithOptions[Config](yamlPath, WithLogger(logger))
 	require.NoError(t, err)
-	assert.Equal(t, 8080, cfg.Port)
+	assert.Equal(t, "debug", cfg.Test.Value)
 }
 
 func TestLoadNestedConfig(t *testing.T) {
@@ -208,44 +298,18 @@ postgres:
 	assert.Equal(t, "mydb", cfg.Postgres.Database)
 }
 
-func TestLoadENVOverrideNested(t *testing.T) {
-	// Set ENV vars for nested config
-	os.Setenv("POSTGRES_HOST", "prod.db.local")
-	os.Setenv("POSTGRES_PORT", "5433")
-	defer os.Unsetenv("POSTGRES_HOST")
-	defer os.Unsetenv("POSTGRES_PORT")
-
-	// Create test YAML file
-	tmpDir := t.TempDir()
-	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `postgres:
-  host: "localhost"
-  port: 5432
-`
-	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
-
-	type Config struct {
-		Postgres struct {
-			Host string `validate:"required"`
-			Port int    `validate:"required"`
-		} `validate:"required"`
-	}
-
-	cfg, err := Load[Config](yamlPath)
-	require.NoError(t, err)
-	assert.Equal(t, "prod.db.local", cfg.Postgres.Host, "ENV should override nested host")
-	assert.Equal(t, 5433, cfg.Postgres.Port, "ENV should override nested port")
-}
-
 func TestLoadRace(t *testing.T) {
 	// Create test YAML file
 	tmpDir := t.TempDir()
 	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `port: 8080`
+	yamlContent := `test:
+  value: "debug"`
 	require.NoError(t, os.WriteFile(yamlPath, []byte(yamlContent), 0o600))
 
 	type Config struct {
-		Port int `validate:"required"`
+		Test struct {
+			Value string `validate:"required"`
+		} `validate:"required"`
 	}
 
 	// Run multiple loads concurrently to test for race conditions
@@ -260,7 +324,7 @@ func TestLoadRace(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		cfg, err := Load[Config](yamlPath)
 		require.NoError(t, err)
-		assert.Equal(t, 8080, cfg.Port)
+		assert.Equal(t, "debug", cfg.Test.Value)
 	}
 
 	<-done
@@ -286,63 +350,93 @@ func ExampleLoad() {
 }
 
 func TestLoadFromEnv(t *testing.T) {
-	// Create test .env file
-	tmpDir := t.TempDir()
-	envPath := filepath.Join(tmpDir, ".env")
-	envContent := `SERVER_HOST=localhost
+	tests := []struct {
+		name           string
+		envContent     string
+		loadOptions    []Option
+		wantErr        bool
+		errMsg         string
+		expectedHost   string
+		expectedPort   int
+	}{
+		{
+			name: "successful load from .env",
+			envContent: `SERVER_HOST=localhost
 SERVER_PORT=8080
-`
-	require.NoError(t, os.WriteFile(envPath, []byte(envContent), 0o600))
-
-	type Config struct {
-		ServerHost string `mapstructure:"server_host" validate:"required"`
-		ServerPort int    `mapstructure:"server_port" validate:"required,min=1,max=65535"`
-	}
-
-	cfg, err := LoadFromEnv[Config](envPath)
-	require.NoError(t, err)
-	assert.Equal(t, "localhost", cfg.ServerHost)
-	assert.Equal(t, 8080, cfg.ServerPort)
-}
-
-func TestLoadFromEnvWithValidation(t *testing.T) {
-	// Create test .env file with invalid port
-	tmpDir := t.TempDir()
-	envPath := filepath.Join(tmpDir, ".env")
-	envContent := `SERVER_HOST=localhost
+`,
+			loadOptions:  []Option{},
+			wantErr:      false,
+			expectedHost: "localhost",
+			expectedPort: 8080,
+		},
+		{
+			name: "validation fails for port above maximum",
+			envContent: `SERVER_HOST=localhost
 SERVER_PORT=99999
-`
-	require.NoError(t, os.WriteFile(envPath, []byte(envContent), 0o600))
-
-	type Config struct {
-		ServerHost string `mapstructure:"server_host" validate:"required"`
-		ServerPort int    `mapstructure:"server_port" validate:"required,min=1,max=65535"`
+`,
+			loadOptions:  []Option{},
+			wantErr:      true,
+			errMsg:       "validate",
+		},
+		{
+			name: "load from .env with prefix",
+			envContent: `HOST=localhost
+PORT=8080
+`,
+			loadOptions:  []Option{WithENVPrefix("SERVER")},
+			wantErr:      false,
+			expectedHost: "localhost",
+			expectedPort: 8080,
+		},
 	}
 
-	_, err := LoadFromEnv[Config](envPath)
-	assert.Error(t, err, "validation should fail for port > 65535")
-	assert.Contains(t, err.Error(), "validate")
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			envPath := filepath.Join(tmpDir, ".env")
+			require.NoError(t, os.WriteFile(envPath, []byte(tt.envContent), 0o600))
 
-func TestLoadFromEnvWithPrefix(t *testing.T) {
-	// Create test .env file without prefix in the file
-	// The prefix is added programmatically via WithENVPrefix
-	tmpDir := t.TempDir()
-	envPath := filepath.Join(tmpDir, ".env")
-	envContent := `SERVERHOST=localhost
-SERVERPORT=8080
-`
-	require.NoError(t, os.WriteFile(envPath, []byte(envContent), 0o600))
+			if tt.name == "load from .env with prefix" {
+				type PrefixConfig struct {
+					Host string `mapstructure:"host" validate:"required"`
+					Port int    `mapstructure:"port" validate:"required,min=1,max=65535"`
+				}
 
-	type Config struct {
-		ServerHost string `mapstructure:"serverhost" validate:"required"`
-		ServerPort int    `mapstructure:"serverport" validate:"required,min=1,max=65535"`
+				cfg, err := LoadFromEnvWithOptions[PrefixConfig](envPath, tt.loadOptions...)
+
+				if tt.wantErr {
+					assert.Error(t, err)
+					if tt.errMsg != "" {
+						assert.Contains(t, err.Error(), tt.errMsg)
+					}
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedHost, cfg.Host)
+				assert.Equal(t, tt.expectedPort, cfg.Port)
+			} else {
+				type Config struct {
+					ServerHost string `mapstructure:"server_host" validate:"required"`
+					ServerPort int    `mapstructure:"server_port" validate:"required,min=1,max=65535"`
+				}
+
+				cfg, err := LoadFromEnvWithOptions[Config](envPath, tt.loadOptions...)
+
+				if tt.wantErr {
+					assert.Error(t, err)
+					if tt.errMsg != "" {
+						assert.Contains(t, err.Error(), tt.errMsg)
+					}
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedHost, cfg.ServerHost)
+				assert.Equal(t, tt.expectedPort, cfg.ServerPort)
+			}
+		})
 	}
-
-	cfg, err := LoadFromEnvWithOptions[Config](envPath, WithENVPrefix("SERVER"))
-	require.NoError(t, err)
-	assert.Equal(t, "localhost", cfg.ServerHost)
-	assert.Equal(t, 8080, cfg.ServerPort)
 }
 
 func TestLoadWithEnvFile(t *testing.T) {

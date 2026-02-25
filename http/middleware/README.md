@@ -8,6 +8,7 @@ Common HTTP middleware for logging, recovery, CORS, and request ID tracking.
 - **Recovery**: Panic recovery with stack trace logging
 - **Request ID**: Unique request identification via headers and context
 - **CORS**: Configurable Cross-Origin Resource Sharing with preflight support
+- **TrimStrings**: Automatic whitespace trimming from JSON string fields
 - **Composable**: Chain multiple middleware easily
 - **Production-ready**: Battle-tested with comprehensive test coverage
 
@@ -102,6 +103,52 @@ config := middleware.DefaultCORSConfig()
 // MaxAge:           86400 (24 hours)
 ```
 
+### TrimStrings (Echo)
+
+Automatically trims whitespace from string fields in JSON request bodies.
+
+```go
+import "github.com/haipham22/govern/http/middleware"
+
+e := echo.New()
+
+// Apply TrimStrings middleware to a route or group
+e.POST("/api/register",
+    middleware.TrimStrings(handleRegister),
+)
+```
+
+**Behavior:**
+- Recursively trims all string values in JSON request bodies
+- Handles nested objects and arrays
+- Uses sonic for high-performance JSON parsing
+- Graceful fallback for invalid JSON (passes through unchanged)
+- Fast-path optimization for strings without whitespace
+
+**Example:**
+
+```go
+// Request body: {"username": "  john  ", "email": "  john@example.com  "}
+// After middleware: {"username": "john", "email": "john@example.com"}
+
+func handleRegister(c echo.Context) error {
+    var req struct {
+        Username string `json:"username"`
+        Email    string `json:"email"`
+    }
+    if err := c.Bind(&req); err != nil {
+        return err
+    }
+    // req.Username and req.Email are already trimmed
+    return c.JSON(http.StatusOK, req)
+}
+```
+
+**Performance:**
+- Uses [sonic](https://github.com/bytedance/sonic) for fast JSON operations
+- Benchmarks show ~2x faster than standard encoding/json
+- Minimal overhead for requests without whitespace
+
 ## Middleware Chaining
 
 Chain middleware by composing them:
@@ -121,12 +168,20 @@ wrapped := middleware.RequestID()(
 )
 ```
 
-**Recommended Order:**
+**Recommended Order (net/http):**
 1. RequestID (outermost)
 2. Logging
 3. Recovery
 4. Custom middleware
 5. Handler (innermost)
+
+**Recommended Order (Echo):**
+1. RequestID (outermost)
+2. Logging
+3. Recovery
+4. TrimStrings (before validation/handlers)
+5. Custom middleware
+6. Handler (innermost)
 
 ## Configuration Options
 
@@ -145,13 +200,14 @@ wrapped := middleware.RequestID()(
 
 ### Middleware Functions
 
-| Function                      | Signature                           | Description                |
-|-------------------------------|-------------------------------------|----------------------------|
-| `Logging`                     | `(*zap.SugaredLogger) Middleware`   | Request/response logger    |
-| `Recovery`                    | `(*zap.SugaredLogger) Middleware`   | Panic recovery             |
-| `RequestID`                   | `() Middleware`                     | Request ID injection        |
-| `CORS`                        | `(*CORSConfig) Middleware`          | CORS handling              |
-| `DefaultCORSConfig`           | `() *CORSConfig`                    | Default CORS configuration |
+| Function                      | Signature                           | Description                         |
+|-------------------------------|-------------------------------------|-------------------------------------|
+| `Logging`                     | `(*zap.SugaredLogger) Middleware`   | Request/response logger            |
+| `Recovery`                    | `(*zap.SugaredLogger) Middleware`   | Panic recovery                     |
+| `RequestID`                   | `() Middleware`                     | Request ID injection                |
+| `CORS`                        | `(*CORSConfig) Middleware`          | CORS handling                      |
+| `DefaultCORSConfig`           | `() *CORSConfig`                    | Default CORS configuration         |
+| `TrimStrings`                 | `(echo.HandlerFunc) echo.HandlerFunc` | Trim JSON string whitespace (Echo) |
 
 ### Types
 

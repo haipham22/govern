@@ -8,6 +8,7 @@ The `echo` package provides utilities for using [Echo](https://echo.labstack.com
 - **Swagger UI Integration**: Configuration utilities for Swagger UI with authentication support
 - **Handler Wrapping**: Reuse standard `http.Handler` with Echo via `WrapHandler()`
 - **Context Helpers**: Utilities for retrieving current user from Echo context
+- **TrimStrings Middleware**: Automatic whitespace trimming from JSON request bodies
 
 ## Installation
 
@@ -188,6 +189,73 @@ var myHandler http.Handler = // ...
 e.GET("/legacy", httpEcho.WrapHandler(myHandler))
 ```
 
+## TrimStrings Middleware
+
+Automatically trim whitespace from string fields in JSON request bodies:
+
+```go
+import httpEcho "github.com/haipham22/govern/http/echo"
+
+e := echo.New()
+
+// Apply to individual routes
+e.POST("/api/register", handleRegister, httpEcho.TrimStrings)
+
+// Apply to route groups
+api := e.Group("/api")
+api.Use(httpEcho.TrimStrings)
+api.POST("/users", createUser)
+
+func handleRegister(c echo.Context) error {
+    var req struct {
+        Username string `json:"username"`
+        Email    string `json:"email"`
+        Password string `json:"password"`
+    }
+    if err := c.Bind(&req); err != nil {
+        return err
+    }
+
+    // All string fields are already trimmed!
+    // req.Username, req.Email, req.Password have no leading/trailing whitespace
+    return c.JSON(http.StatusOK, req)
+}
+```
+
+**Features:**
+- Recursively trims all string values in JSON request bodies
+- Handles nested objects and arrays
+- Uses sonic for high-performance JSON parsing (~2x faster than encoding/json)
+- Graceful fallback for invalid JSON (passes through unchanged)
+- Fast-path optimization for strings without whitespace
+- Zero overhead for non-JSON requests
+
+**Example:**
+
+```go
+// Request body:
+// {
+//   "username": "  john_doe  ",
+//   "email": "  john@example.com  ",
+//   "profile": {
+//     "name": "  John Doe  ",
+//     "bio": "  Software Engineer  "
+//   },
+//   "tags": ["  go  ", "  echo  ", "  api  "]
+// }
+
+// After TrimStrings middleware:
+// {
+//   "username": "john_doe",
+//   "email": "john@example.com",
+//   "profile": {
+//     "name": "John Doe",
+//     "bio": "Software Engineer"
+//   },
+//   "tags": ["go", "echo", "api"]
+// }
+```
+
 ## Middleware Compatibility
 
 ### IMPORTANT: Do NOT Mix Middleware Types
@@ -229,11 +297,41 @@ go test -race ./http/echo/...
 
 ## Best Practices
 
-1. **Use Echo middleware** for Echo routes (logging, recovery, CORS)
+1. **Use Echo middleware** for Echo routes (logging, recovery, CORS, TrimStrings)
 2. **Use WrapHandler()** to reuse standard `http.Handler` with Echo
-3. **Always pass context** as first parameter to downstream operations
-4. **Test with race detector**: `go test -race ./http/echo/...`
-5. **Run golangci-lint**: `golangci-lint run ./http/echo/...`
+3. **Apply TrimStrings early** in the middleware chain (before validation/handlers)
+4. **Always pass context** as first parameter to downstream operations
+5. **Test with race detector**: `go test -race ./http/echo/...`
+6. **Run golangci-lint**: `golangci-lint run ./http/echo/...`
+
+## Middleware Order
+
+Recommended middleware order for Echo:
+
+```go
+e := echo.New()
+
+// 1. Request ID (outermost)
+e.Use(middleware.RequestID())
+
+// 2. Logger
+e.Use(middleware.Logger())
+
+// 3. Recovery
+e.Use(middleware.Recover())
+
+// 4. CORS
+e.Use(middleware.CORS())
+
+// 5. TrimStrings (before validation/handlers)
+e.Use(httpEcho.TrimStrings)
+
+// 6. JWT authentication (for protected routes)
+api := e.Group("/api", httpEcho.JWTMiddleware(jwtConfig))
+
+// 7. Your handlers
+api.GET("/users", getUsers)
+```
 
 ## Examples
 

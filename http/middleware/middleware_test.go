@@ -181,10 +181,10 @@ func TestLogging(t *testing.T) {
 
 func TestLogging_ResponseWriter(t *testing.T) {
 	tests := []struct {
-		name                  string
-		handler               http.HandlerFunc
-		expectedBytes         int
-		validateBytesWritten  func(*testing.T, []map[string]interface{})
+		name                 string
+		handler              http.HandlerFunc
+		expectedBytes        int
+		validateBytesWritten func(*testing.T, []map[string]interface{})
 	}{
 		{
 			name: "tracks bytes written",
@@ -465,10 +465,10 @@ func TestRequestID(t *testing.T) {
 	mw := RequestID()
 
 	tests := []struct {
-		name          string
-		request       *http.Request
-		validateResp  func(*testing.T, *httptest.ResponseRecorder)
-		validateCtx   func(*testing.T, *http.Request)
+		name         string
+		request      *http.Request
+		validateResp func(*testing.T, *httptest.ResponseRecorder)
+		validateCtx  func(*testing.T, *http.Request)
 	}{
 		{
 			name:    "adds request ID to response header",
@@ -579,11 +579,11 @@ func TestRequestID_Consistency(t *testing.T) {
 
 func TestCORS(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         *CORSConfig
-		request        *http.Request
+		name            string
+		config          *CORSConfig
+		request         *http.Request
 		validateHeaders func(*testing.T, *httptest.ResponseRecorder)
-		expectedStatus int
+		expectedStatus  int
 	}{
 		{
 			name:   "default configuration",
@@ -676,9 +676,9 @@ func TestCORS(t *testing.T) {
 		{
 			name: "exposed headers",
 			config: &CORSConfig{
-				AllowedOrigins:  []string{"*"},
-				AllowedMethods:  []string{"GET"},
-				ExposedHeaders:  []string{"X-Custom-Header", "X-Another-Header"},
+				AllowedOrigins: []string{"*"},
+				AllowedMethods: []string{"GET"},
+				ExposedHeaders: []string{"X-Custom-Header", "X-Another-Header"},
 			},
 			request: createTestRequest(t, http.MethodGet, "/", nil),
 			validateHeaders: func(t *testing.T, rec *httptest.ResponseRecorder) {

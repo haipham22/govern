@@ -46,14 +46,7 @@ func assertTokenValid(t *testing.T, tokenString string, config *Config) {
 	require.NotNil(t, claims)
 }
 
-func assertTokenError(t *testing.T, tokenString string, config *Config, expectedErr error) {
-	t.Helper()
-	_, err := ValidateToken(tokenString, config)
-	assert.Error(t, err)
-	assert.Equal(t, expectedErr, err)
-}
-
-func assertErrorCode(t *testing.T, err error, wantErr error) {
+func assertErrorCode(t *testing.T, err, wantErr error) {
 	t.Helper()
 	assert.Error(t, err)
 	assert.Equal(t, wantErr, err)
@@ -192,12 +185,12 @@ func TestGenerateAccessToken(t *testing.T) {
 					RefreshDuration: 7 * 24 * time.Hour,
 				}
 			},
-			validate: nil,
-			wantErr:  ErrSecretRequired,
+			validate:    nil,
+			wantErr:     ErrSecretRequired,
 			description: "should fail with invalid config",
 		},
 		{
-			name: "token with HS512 signing",
+			name:        "token with HS512 signing",
 			setupClaims: createTestClaims,
 			setupConfig: func(t *testing.T) *Config {
 				t.Helper()
@@ -217,7 +210,7 @@ func TestGenerateAccessToken(t *testing.T) {
 			description: "should generate token with HS512",
 		},
 		{
-			name: "token expiration set correctly",
+			name:        "token expiration set correctly",
 			setupClaims: createTestClaims,
 			setupConfig: func(t *testing.T) *Config {
 				t.Helper()
@@ -301,8 +294,8 @@ func TestGenerateRefreshToken(t *testing.T) {
 					RefreshDuration: 7 * 24 * time.Hour,
 				}
 			},
-			validate: nil,
-			wantErr:  ErrSecretRequired,
+			validate:    nil,
+			wantErr:     ErrSecretRequired,
 			description: "should fail with invalid config",
 		},
 	}
@@ -805,7 +798,7 @@ func TestGenerateSecureSecret(t *testing.T) {
 			description: "should handle zero length",
 		},
 		{
-			name: "unique secrets",
+			name:   "unique secrets",
 			length: 32,
 			validate: func(t *testing.T, secret string) {
 				t.Helper()
@@ -849,7 +842,7 @@ func TestDefaultTokenExtractor(t *testing.T) {
 			name: "valid bearer token",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/test", nil)
+				req := httptest.NewRequest("GET", "/test", http.NoBody)
 				req.Header.Set("Authorization", "Bearer valid-token-123")
 				return req
 			},
@@ -864,7 +857,7 @@ func TestDefaultTokenExtractor(t *testing.T) {
 			name: "missing authorization header",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				return httptest.NewRequest("GET", "/test", nil)
+				return httptest.NewRequest("GET", "/test", http.NoBody)
 			},
 			wantErr:     ErrTokenMissing,
 			description: "should return error for missing header",
@@ -873,7 +866,7 @@ func TestDefaultTokenExtractor(t *testing.T) {
 			name: "invalid authorization format - no bearer",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/test", nil)
+				req := httptest.NewRequest("GET", "/test", http.NoBody)
 				req.Header.Set("Authorization", "valid-token-123")
 				return req
 			},
@@ -884,7 +877,7 @@ func TestDefaultTokenExtractor(t *testing.T) {
 			name: "invalid authorization format - wrong prefix",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/test", nil)
+				req := httptest.NewRequest("GET", "/test", http.NoBody)
 				req.Header.Set("Authorization", "Basic token-123")
 				return req
 			},
@@ -895,7 +888,7 @@ func TestDefaultTokenExtractor(t *testing.T) {
 			name: "empty bearer token",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/test", nil)
+				req := httptest.NewRequest("GET", "/test", http.NoBody)
 				req.Header.Set("Authorization", "Bearer ")
 				return req
 			},
@@ -906,7 +899,7 @@ func TestDefaultTokenExtractor(t *testing.T) {
 			name: "multiple spaces in bearer token",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/test", nil)
+				req := httptest.NewRequest("GET", "/test", http.NoBody)
 				req.Header.Set("Authorization", "Bearer   token-with-spaces")
 				return req
 			},
@@ -949,7 +942,7 @@ func TestGetCurrentUser(t *testing.T) {
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
 				claims := createTestClaims(t)
-				req := httptest.NewRequest("GET", "/test", nil)
+				req := httptest.NewRequest("GET", "/test", http.NoBody)
 				ctx := req.Context()
 				ctx = context.WithValue(ctx, UserKey, claims)
 				return req.WithContext(ctx)
@@ -966,7 +959,7 @@ func TestGetCurrentUser(t *testing.T) {
 			name: "no user in context",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				return httptest.NewRequest("GET", "/test", nil)
+				return httptest.NewRequest("GET", "/test", http.NoBody)
 			},
 			validate: func(t *testing.T, claims *Claims, ok bool) {
 				t.Helper()
@@ -979,7 +972,7 @@ func TestGetCurrentUser(t *testing.T) {
 			name: "wrong type in context",
 			setupReq: func(t *testing.T) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/test", nil)
+				req := httptest.NewRequest("GET", "/test", http.NoBody)
 				ctx := req.Context()
 				ctx = context.WithValue(ctx, UserKey, "not-a-claims")
 				return req.WithContext(ctx)
@@ -1004,7 +997,7 @@ func TestGetCurrentUser(t *testing.T) {
 
 func TestMustGetCurrentUser(t *testing.T) {
 	t.Run("should panic when no user in context", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
+		req := httptest.NewRequest("GET", "/test", http.NoBody)
 		assert.Panics(t, func() {
 			MustGetCurrentUser(req)
 		})
@@ -1012,7 +1005,7 @@ func TestMustGetCurrentUser(t *testing.T) {
 
 	t.Run("should return user when in context", func(t *testing.T) {
 		claims := createTestClaims(t)
-		req := httptest.NewRequest("GET", "/test", nil)
+		req := httptest.NewRequest("GET", "/test", http.NoBody)
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, UserKey, claims)
 		req = req.WithContext(ctx)
@@ -1043,7 +1036,7 @@ func TestMiddleware(t *testing.T) {
 			},
 			setupReq: func(t *testing.T, token string) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/protected", nil)
+				req := httptest.NewRequest("GET", "/protected", http.NoBody)
 				req.Header.Set("Authorization", "Bearer "+token)
 				return req
 			},
@@ -1068,7 +1061,7 @@ func TestMiddleware(t *testing.T) {
 			},
 			setupReq: func(t *testing.T, token string) *http.Request {
 				t.Helper()
-				return httptest.NewRequest("GET", "/protected", nil)
+				return httptest.NewRequest("GET", "/protected", http.NoBody)
 			},
 			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
 				t.Helper()
@@ -1089,7 +1082,7 @@ func TestMiddleware(t *testing.T) {
 			},
 			setupReq: func(t *testing.T, token string) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/protected", nil)
+				req := httptest.NewRequest("GET", "/protected", http.NoBody)
 				req.Header.Set("Authorization", "Bearer invalid-token")
 				return req
 			},
@@ -1113,7 +1106,7 @@ func TestMiddleware(t *testing.T) {
 			},
 			setupReq: func(t *testing.T, token string) *http.Request {
 				t.Helper()
-				return httptest.NewRequest("GET", "/public/resource", nil)
+				return httptest.NewRequest("GET", "/public/resource", http.NoBody)
 			},
 			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
 				t.Helper()
@@ -1135,7 +1128,7 @@ func TestMiddleware(t *testing.T) {
 			},
 			setupReq: func(t *testing.T, token string) *http.Request {
 				t.Helper()
-				req := httptest.NewRequest("GET", "/protected", nil)
+				req := httptest.NewRequest("GET", "/protected", http.NoBody)
 				req.Header.Set("Authorization", "Bearer "+token)
 				return req
 			},
@@ -1366,7 +1359,7 @@ func TestDefaultErrorHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/test", nil)
+			req := httptest.NewRequest("GET", "/test", http.NoBody)
 			w := httptest.NewRecorder()
 
 			DefaultErrorHandler(w, req, tt.err)

@@ -55,6 +55,10 @@ func TestSwaggerInfo(t *testing.T) {
 		}
 
 		assert.Equal(t, "Complete API", info.Title)
+		assert.Equal(t, "Complete API description", info.Description)
+		assert.Equal(t, "3.0", info.Version)
+		assert.Equal(t, "example.com", info.Host)
+		assert.Equal(t, "/api/v3", info.BasePath)
 		assert.Equal(t, "https://example.com/terms", info.TermsOfService)
 		assert.Equal(t, "API Team", info.ContactName)
 		assert.Equal(t, "https://example.com/contact", info.ContactURL)
@@ -89,6 +93,7 @@ func TestSwaggerAuth(t *testing.T) {
 		}
 
 		assert.Equal(t, "ApiKey", auth.Type)
+		assert.Equal(t, "API key authentication", auth.Description)
 		assert.Equal(t, "X-API-Key", auth.Name)
 		assert.Equal(t, "header", auth.In)
 	})
@@ -101,6 +106,8 @@ func TestSwaggerAuth(t *testing.T) {
 			In:          "query",
 		}
 
+		assert.Equal(t, "ApiKey", auth.Type)
+		assert.Equal(t, "API key in query", auth.Description)
 		assert.Equal(t, "query", auth.In)
 		assert.Equal(t, "api_key", auth.Name)
 	})
@@ -150,8 +157,11 @@ func TestSwaggerAuth(t *testing.T) {
 			},
 		}
 
+		assert.Equal(t, "OAuth2", auth.Type)
 		assert.Equal(t, "implicit", auth.Flow)
-		assert.NotEmpty(t, auth.AuthorizationURL)
+		assert.Equal(t, "https://example.com/oauth/authorize", auth.AuthorizationURL)
+		assert.Len(t, auth.Scopes, 1)
+		assert.Equal(t, "Read access", auth.Scopes["read"])
 		assert.Empty(t, auth.TokenURL) // Not needed for implicit flow
 	})
 
@@ -165,8 +175,11 @@ func TestSwaggerAuth(t *testing.T) {
 			},
 		}
 
+		assert.Equal(t, "OAuth2", auth.Type)
 		assert.Equal(t, "password", auth.Flow)
-		assert.NotEmpty(t, auth.TokenURL)
+		assert.Equal(t, "https://example.com/oauth/token", auth.TokenURL)
+		assert.Len(t, auth.Scopes, 1)
+		assert.Equal(t, "Full access", auth.Scopes["full"])
 	})
 
 	t.Run("OAuth2 with application flow", func(t *testing.T) {
@@ -179,8 +192,11 @@ func TestSwaggerAuth(t *testing.T) {
 			},
 		}
 
+		assert.Equal(t, "OAuth2", auth.Type)
 		assert.Equal(t, "application", auth.Flow)
-		assert.NotEmpty(t, auth.TokenURL)
+		assert.Equal(t, "https://example.com/oauth/token", auth.TokenURL)
+		assert.Len(t, auth.Scopes, 1)
+		assert.Equal(t, "Service account access", auth.Scopes["service"])
 	})
 }
 
@@ -230,6 +246,8 @@ func TestSwaggerOptions(t *testing.T) {
 		retrievedInfo := settings.ExportGetSwaggerInfo()
 		assert.Equal(t, info, retrievedInfo)
 		assert.Equal(t, "Test API", retrievedInfo.Title)
+		assert.Equal(t, "Test description", retrievedInfo.Description)
+		assert.Equal(t, "1.0", retrievedInfo.Version)
 	})
 
 	t.Run("WithSwaggerInfo with DefaultSwaggerInfo", func(t *testing.T) {
@@ -256,18 +274,23 @@ func TestSwaggerOptions(t *testing.T) {
 		retrievedAuth := settings.ExportGetSwaggerAuth()
 		assert.Equal(t, auth, retrievedAuth)
 		assert.Equal(t, "Bearer", retrievedAuth.Type)
+		assert.Equal(t, "JWT", retrievedAuth.Description)
+		assert.Equal(t, "Authorization", retrievedAuth.Name)
+		assert.Equal(t, "header", retrievedAuth.In)
 	})
 
 	t.Run("multiple options can be applied", func(t *testing.T) {
 		settings := httpEcho.ExportGetSwaggerSettings()
 
 		info := &httpEcho.SwaggerInfo{
-			Title:   "Multi Option API",
-			Version: "2.0",
+			Title:       "Multi Option API",
+			Description: "Multi option test API",
+			Version:     "2.0",
 		}
 
 		auth := &httpEcho.SwaggerAuth{
-			Type: "Bearer",
+			Type:        "Bearer",
+			Description: "Bearer auth",
 		}
 
 		settings.ExportApplySwaggerOption(httpEcho.WithSwaggerEnabled(true))

@@ -19,7 +19,6 @@ func assertErrorCode(t *testing.T, err error, wantCode errors.ErrorCode) {
 	assert.Equal(t, wantCode, code, "GetCode() should return correct code")
 }
 
-
 func TestErrorWithCode(t *testing.T) {
 	tests := []struct {
 		name string

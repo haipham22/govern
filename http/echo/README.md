@@ -83,17 +83,123 @@ func handler(c echo.Context) error {
 
 ## Swagger UI Integration
 
-Configure Swagger UI for your Echo application:
+Configure Swagger UI for your Echo application using `WithEchoSwagger`:
 
-### Setup
+### Quick Start
 
-1. Install swag CLI:
+```go
+import httpEcho "github.com/haipham22/govern/http/echo"
+
+e := echo.New()
+
+// Setup Swagger UI
+httpEcho.WithEchoSwagger(e,
+    httpEcho.WithSwaggerEnabled(true),
+    httpEcho.WithSwaggerInfo(&httpEcho.SwaggerInfo{
+        Title:       "My API",
+        Description: "Sample API server",
+        Version:     "1.0",
+    }),
+)
+
+// Add your routes
+e.GET("/users", getUsers)
+
+e.Start(":8080")
+```
+
+Access Swagger UI at: `http://localhost:8080/swagger/`
+
+### Configuration Options
+
+```go
+httpEcho.WithEchoSwagger(e,
+    // Enable/disable Swagger UI
+    httpEcho.WithSwaggerEnabled(true),
+
+    // Custom path (default: /swagger/*)
+    httpEcho.WithSwaggerPath("/api/docs/*"),
+
+    // API metadata
+    httpEcho.WithSwaggerInfo(&httpEcho.SwaggerInfo{
+        Title:          "User Management API",
+        Description:    "API for managing users",
+        Version:        "2.0",
+        Host:           "api.example.com",
+        BasePath:       "/v1",
+        TermsOfService: "https://example.com/terms",
+        ContactName:    "API Support",
+        ContactEmail:   "support@example.com",
+        LicenseName:    "MIT",
+        LicenseURL:     "https://opensource.org/licenses/MIT",
+    }),
+
+    // Authentication
+    httpEcho.WithSwaggerAuth(&httpEcho.SwaggerAuth{
+        Type:        "Bearer",
+        Description: "JWT token",
+        Name:        "Authorization",
+        In:          "header",
+    }),
+)
+```
+
+### Authentication Types
+
+**Bearer Token (JWT):**
+```go
+httpEcho.WithSwaggerAuth(&httpEcho.SwaggerAuth{
+    Type:        "Bearer",
+    Description: "JWT token for authentication",
+    Name:        "Authorization",
+    In:          "header",
+})
+```
+
+**API Key:**
+```go
+httpEcho.WithSwaggerAuth(&httpEcho.SwaggerAuth{
+    Type:        "ApiKey",
+    Description: "API key in header",
+    Name:        "X-API-Key",
+    In:          "header",
+})
+```
+
+**Basic Auth:**
+```go
+httpEcho.WithSwaggerAuth(&httpEcho.SwaggerAuth{
+    Type:        "Basic",
+    Description: "Basic authentication",
+})
+```
+
+**OAuth2:**
+```go
+httpEcho.WithSwaggerAuth(&httpEcho.SwaggerAuth{
+    Type:            "OAuth2",
+    Description:     "OAuth2 flow",
+    Flow:            "implicit",
+    AuthorizationURL: "https://example.com/oauth/authorize",
+    TokenURL:        "https://example.com/oauth/token",
+    Scopes: map[string]string{
+        "read":  "Read access",
+        "write": "Write access",
+    },
+})
+```
+
+### With Swag Tool Integration
+
+For full Swagger documentation with swag:
+
+1. Install swag:
 
 ```bash
 go install github.com/swaggo/swag/cmd/swag@latest
 ```
 
-2. Add Swagger annotations to your handlers:
+2. Add annotations to handlers:
 
 ```go
 // @Summary Get user by ID
@@ -105,73 +211,54 @@ go install github.com/swaggo/swag/cmd/swag@latest
 // @Success 200 {object} User
 // @Failure 404 {object} ErrorResponse
 // @Router /users/{id} [get]
+// @Security Bearer
 func getUser(c echo.Context) error {
     // Handler logic
 }
 ```
 
-3. Generate Swagger docs:
+3. Generate docs:
 
 ```bash
 swag init -g cmd/api/main.go
 ```
 
-4. Configure Swagger UI:
+4. Import docs package and setup Swagger:
 
 ```go
 import _ "myapi/docs"  // Generated docs
 
-func setupSwagger(e *echo.Echo) {
-    swaggerOpts := []httpEcho.SwaggerOption{
-        httpEcho.WithSwaggerEnabled(true),
-        httpEcho.WithSwaggerInfo(&httpEcho.SwaggerInfo{
-            Title:       "My API",
-            Description: "Sample API server",
-            Version:     "1.0",
-        }),
-    }
-
-    // Apply swagger configuration to Echo instance
-    // (Implementation depends on your Echo setup)
-}
-```
-
-### Authentication
-
-Enable Bearer token authentication in Swagger UI:
-
-```go
-swaggerOpts := []httpEcho.SwaggerOption{
+httpEcho.WithEchoSwagger(e,
     httpEcho.WithSwaggerEnabled(true),
     httpEcho.WithSwaggerAuth(&httpEcho.SwaggerAuth{
-        Type:        "Bearer",
+        Type: "Bearer",
         Description: "JWT token",
-        Name:        "Authorization",
-        In:          "header",
+        Name: "Authorization",
+        In: "header",
     }),
-}
-```
-
-Add these annotations to main.go:
-
-```go
-// @securityDefinitions.apikey Bearer
-// @in header
-// @name Authorization
-// @description Enter the token with the `Bearer ` prefix, e.g. "Bearer abcde12345"
+)
 ```
 
 ### Security
 
-Swagger UI should not be exposed in production without authentication. Use environment variables:
+**Swagger UI is disabled by default for security.**
+
+Only enable in development or behind authentication:
 
 ```go
-enableSwagger := os.Getenv("GO_ENV") == "development"
-swaggerOpts := []httpEcho.SwaggerOption{
+enableSwagger := os.Getenv("APP_ENV") == "development"
+
+httpEcho.WithEchoSwagger(e,
     httpEcho.WithSwaggerEnabled(enableSwagger),
     httpEcho.WithSwaggerPath("/swagger/*"),
-}
+)
 ```
+
+**Production recommendations:**
+- Keep Swagger UI disabled in production
+- Or protect it with authentication middleware
+- Use environment variables for configuration
+- Never expose Swagger UI on public internet without auth
 
 ## Handler Wrapping
 

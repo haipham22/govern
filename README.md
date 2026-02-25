@@ -17,7 +17,7 @@ go get github.com/haipham22/govern
 |---------------------------------------------|--------------------------------------------------------------|
 | [`config`](./config/)                       | Configuration loading with YAML, .env, and ENV variables      |
 | [`http`](./http/)                           | HTTP server with graceful shutdown and middleware            |
-| [`http/echo`](./http/echo/)                 | Echo framework integration with Govern's HTTP server         |
+| [`http/echo`](./http/echo/)                 | Echo utilities: JWT middleware, Swagger integration, handler wrapping         |
 | [`http/jwt`](./http/jwt/)                   | JWT authentication middleware and token management           |
 | [`http/middleware`](./http/middleware/)     | Common HTTP middleware (logging, recovery, CORS, request ID) |
 | [`graceful`](./graceful/)                   | Goroutine and process management with graceful shutdown      |
@@ -48,7 +48,7 @@ See [QUICKSTART.md](./QUICKSTART.md) for installation and usage examples.
 - [x] HTTP server with middleware
 
 ### Phase 3: Ecosystem ✅
-- [x] Echo framework integration
+- [x] Echo utilities (JWT, Swagger, handler wrapping)
 - [x] JWT authentication
 - [ ] Circuit breaker pattern
 - [ ] Additional framework integrations (gin, fiber)

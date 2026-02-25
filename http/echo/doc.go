@@ -1,35 +1,36 @@
-// Package echo provides integration between the Echo web framework and Govern's HTTP server.
+// Package echo provides utilities for using Echo framework with Govern.
 //
-// This package allows you to use Echo's powerful routing and middleware while maintaining
-// Govern's graceful shutdown and HTTP server management capabilities.
-//
-// # Basic Usage
-//
-//	server := echo.NewServer(":8080")
-//
-//	server.GET("/", func(c echo.Context) error {
-//	    return c.String(http.StatusOK, "Hello, World!")
-//	})
-//
-//	server.Start()
-//
-// # Middleware
-//
-//	// Add standard Echo middleware
-//	server.Use(echoMiddleware)
-//
-//	// Convert Govern's http.Middleware to Echo
-//	server.Use(echo.Middleware(governMiddleware))
+// This package provides JWT authentication middleware, Swagger UI integration,
+// and handler wrapping utilities for Echo applications.
 //
 // # JWT Authentication
 //
+// Create JWT middleware for Echo routes:
+//
 //	jwtConfig := &jwt.MiddlewareConfig{
-//	    Config:         jwtConfig,
+//	    Config:         jwt.DefaultConfig(),
 //	    TokenExtractor: jwt.DefaultTokenExtractor,
 //	    SkipPaths:      []string{"/health", "/login"},
 //	}
+//	jwtConfig.Config.Secret = "your-secret-key"
 //
-//	server.Use(echo.JWTMiddleware(jwtConfig))
+//	// Use with Echo
+//	e := echo.New()
+//	e.Use(echo.JWTMiddleware(jwtConfig))
+//
+// # Getting Current User
+//
+//	func handler(c echo.Context) error {
+//	    claims, ok := echo.GetCurrentUser(c)
+//	    if !ok {
+//	        return echo.NewHTTPError(http.StatusUnauthorized, "not authenticated")
+//	    }
+//
+//	    // Or panic if not found (use after JWT middleware)
+//	    claims := echo.MustGetCurrentUser(c)
+//
+//	    return c.JSON(http.StatusOK, claims)
+//	}
 //
 // # Swagger UI Integration
 //
@@ -60,22 +61,18 @@
 //
 //	swag init -g cmd/api/main.go
 //
-// 4. Import docs package and use WithEchoSwagger option:
+// 4. Configure Swagger UI options:
 //
 //	import _ "myapi/docs"  // Generated docs
 //
-//	server := echo.NewServer(":8080",
-//	    echo.WithEchoSwagger(
-//	        echo.WithSwaggerEnabled(true),
-//	        echo.WithSwaggerInfo(&echo.SwaggerInfo{
-//	            Title:       "My API",
-//	            Description: "Sample API server",
-//	            Version:     "1.0",
-//	        }),
-//	    ),
-//	)
+//	swaggerConfig := echo.WithSwaggerEnabled(true)
+//	swaggerConfig = echo.WithSwaggerInfo(&echo.SwaggerInfo{
+//	    Title:       "My API",
+//	    Description: "Sample API server",
+//	    Version:     "1.0",
+//	})(swaggerConfig)
 //
-// 5. Access Swagger UI at: http://localhost:8080/swagger/index.html
+// 5. Apply to Echo instance manually
 //
 // ## Security
 //
@@ -83,29 +80,18 @@
 // Use WithSwaggerEnabled with environment variables:
 //
 //	enableSwagger := os.Getenv("GO_ENV") == "development"
-//	server := echo.NewServer(":8080",
-//	    echo.WithEchoSwagger(
-//	        echo.WithSwaggerEnabled(enableSwagger),
-//	        echo.WithSwaggerPath("/swagger/*"),
-//	    ),
-//	)
+//	swaggerConfig := echo.WithSwaggerEnabled(enableSwagger)
 //
 // ## With JWT Authentication
 //
 // To enable Bearer token authentication in Swagger UI:
 //
-//	server := echo.NewServer(":8080",
-//	    echo.WithJWT(jwtConfig),
-//	    echo.WithEchoSwagger(
-//	        echo.WithSwaggerEnabled(true),
-//	        echo.WithSwaggerAuth(&echo.SwaggerAuth{
-//	            Type:        "Bearer",
-//	            Description: "JWT token",
-//	            Name:        "Authorization",
-//	            In:          "header",
-//	        }),
-//	    ),
-//	)
+//	swaggerConfig := echo.WithSwaggerAuth(&echo.SwaggerAuth{
+//	    Type:        "Bearer",
+//	    Description: "JWT token",
+//	    Name:        "Authorization",
+//	    In:          "header",
+//	})
 //
 // Add these annotations to main.go:
 //
@@ -114,13 +100,16 @@
 //	// @name Authorization
 //	// @description Enter the token with the `Bearer ` prefix, e.g. "Bearer abcde12345"
 //
-// # Graceful Shutdown
+// # Handler Wrapping
 //
-// The server automatically handles graceful shutdown when interrupted.
-// Use context cancellation for clean shutdown of background operations.
+// Wrap standard http.Handler for use with Echo:
 //
-// # Concurrency
+//	var myHandler http.Handler = // ...
+//	e.GET("/legacy", echo.WrapHandler(myHandler))
 //
-// All middleware and handlers are concurrency-safe.
-// Use context.Context for cancellation and timeouts in long-running operations.
+// # Middleware Compatibility
+//
+// IMPORTANT: Echo middleware (echo.MiddlewareFunc) and Govern middleware (http.Middleware)
+// are NOT compatible due to different error handling and context types.
+// Use Echo middleware for Echo routes, and Govern middleware for http.Handler routes.
 package echo

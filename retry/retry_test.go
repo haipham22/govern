@@ -15,37 +15,64 @@ func TestPolicy_Do(t *testing.T) {
 	tests := []struct {
 		name        string
 		policy      *Policy
-		fn          func() error
+		fnFactory   func(*int) func() error
 		wantErr     bool
 		errMsg      string
 		wantCalls   int
 		description string
 	}{
 		{
-			name:        "success after retries",
-			policy:      NewPolicy(),
+			name:   "success after retries",
+			policy: NewPolicy(),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					if *calls < 2 {
+						return errors.New("temporary error")
+					}
+					return nil
+				}
+			},
 			wantErr:     false,
 			wantCalls:   2,
 			description: "should succeed on second attempt",
 		},
 		{
-			name:        "max attempts exceeded",
-			policy:      NewPolicy(MaxAttempts(3)),
+			name:   "max attempts exceeded",
+			policy: NewPolicy(MaxAttempts(3)),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					return errors.New("always fails")
+				}
+			},
 			wantErr:     true,
 			errMsg:      "max retries exceeded",
 			wantCalls:   3,
 			description: "should fail after max attempts",
 		},
 		{
-			name:        "zero attempts",
-			policy:      NewPolicy(MaxAttempts(1)),
+			name:   "zero attempts",
+			policy: NewPolicy(MaxAttempts(1)),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					return errors.New("always fails")
+				}
+			},
 			wantErr:     true,
 			wantCalls:   1,
 			description: "should fail on single attempt",
 		},
 		{
-			name:        "last error returned",
-			policy:      NewPolicy(),
+			name:   "last error returned",
+			policy: NewPolicy(),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					return errors.New("final error")
+				}
+			},
 			wantErr:     true,
 			errMsg:      "final error",
 			wantCalls:   3,
@@ -56,30 +83,7 @@ func TestPolicy_Do(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
-
-			fn := tt.fn
-			if fn == nil {
-				switch tt.name {
-				case "success after retries":
-					fn = func() error {
-						calls++
-						if calls < 2 {
-							return errors.New("temporary error")
-						}
-						return nil
-					}
-				case "max attempts exceeded", "zero attempts":
-					fn = func() error {
-						calls++
-						return errors.New("always fails")
-					}
-				case "last error returned":
-					fn = func() error {
-						calls++
-						return errors.New("final error")
-					}
-				}
-			}
+			fn := tt.fnFactory(&calls)
 
 			err := tt.policy.Do(fn)
 
@@ -100,23 +104,37 @@ func TestPolicy_Do_MaxDuration(t *testing.T) {
 	tests := []struct {
 		name        string
 		policy      *Policy
-		fn          func() error
+		fnFactory   func(*int) func() error
 		wantErr     bool
 		errMsg      string
 		maxCalls    int
 		description string
 	}{
 		{
-			name:        "deadline exceeded",
-			policy:      NewPolicy(MaxDuration(100 * time.Millisecond)),
+			name:   "deadline exceeded",
+			policy: NewPolicy(MaxDuration(100 * time.Millisecond)),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					time.Sleep(10 * time.Millisecond)
+					return errors.New("always fails")
+				}
+			},
 			wantErr:     true,
 			errMsg:      "deadline exceeded",
 			maxCalls:    2,
 			description: "should stop when max duration exceeded",
 		},
 		{
-			name:        "max duration with fast fail",
-			policy:      NewPolicy(MaxDuration(50*time.Millisecond), Backoff(NewConstantBackoff(30*time.Millisecond))),
+			name:   "max duration with fast fail",
+			policy: NewPolicy(MaxDuration(50*time.Millisecond), Backoff(NewConstantBackoff(30*time.Millisecond))),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					time.Sleep(10 * time.Millisecond)
+					return errors.New("always fails")
+				}
+			},
 			wantErr:     true,
 			maxCalls:    2,
 			description: "should hit max duration before max attempts",
@@ -126,15 +144,7 @@ func TestPolicy_Do_MaxDuration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
-
-			fn := tt.fn
-			if fn == nil {
-				fn = func() error {
-					calls++
-					time.Sleep(10 * time.Millisecond)
-					return errors.New("always fails")
-				}
-			}
+			fn := tt.fnFactory(&calls)
 
 			err := tt.policy.Do(fn)
 
@@ -151,7 +161,7 @@ func TestPolicy_Do_BackingOff(t *testing.T) {
 	tests := []struct {
 		name          string
 		policy        *Policy
-		fn            func() error
+		fnFactory     func(*int) func() error
 		wantErr       bool
 		wantCalls     int
 		minElapsed    time.Duration
@@ -160,23 +170,44 @@ func TestPolicy_Do_BackingOff(t *testing.T) {
 		description   string
 	}{
 		{
-			name:       "backoff option applied",
-			policy:     NewPolicy(MaxAttempts(5), MaxDuration(time.Hour), Backoff(NewConstantBackoff(10*time.Millisecond))),
+			name:   "backoff option applied",
+			policy: NewPolicy(MaxAttempts(5), MaxDuration(time.Hour), Backoff(NewConstantBackoff(10*time.Millisecond))),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					if *calls < 3 {
+						return errors.New("temp")
+					}
+					return nil
+				}
+			},
 			wantErr:    false,
 			wantCalls:  3,
 			minElapsed: 15 * time.Millisecond,
 			maxElapsed: 100 * time.Millisecond,
 		},
 		{
-			name:       "fast failure with backoff",
-			policy:     NewPolicy(MaxAttempts(5), MaxDuration(time.Hour), Backoff(NewConstantBackoff(10*time.Millisecond))),
+			name:   "fast failure with backoff",
+			policy: NewPolicy(MaxAttempts(5), MaxDuration(time.Hour), Backoff(NewConstantBackoff(10*time.Millisecond))),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					(*calls)++
+					return errors.New("fail fast")
+				}
+			},
 			wantErr:    true,
 			wantCalls:  5,
 			minElapsed: 40 * time.Millisecond,
 		},
 		{
-			name:       "long running success",
-			policy:     NewPolicy(MaxAttempts(1)),
+			name:   "long running success",
+			policy: NewPolicy(MaxAttempts(1)),
+			fnFactory: func(calls *int) func() error {
+				return func() error {
+					time.Sleep(50 * time.Millisecond)
+					return nil
+				}
+			},
 			wantErr:    false,
 			minElapsed: 50 * time.Millisecond,
 		},
@@ -186,30 +217,7 @@ func TestPolicy_Do_BackingOff(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
 			start := time.Now()
-
-			fn := tt.fn
-			if fn == nil {
-				switch tt.name {
-				case "backoff option applied":
-					fn = func() error {
-						calls++
-						if calls < 3 {
-							return errors.New("temp")
-						}
-						return nil
-					}
-				case "fast failure with backoff":
-					fn = func() error {
-						calls++
-						return errors.New("fail fast")
-					}
-				case "long running success":
-					fn = func() error {
-						time.Sleep(50 * time.Millisecond)
-						return nil
-					}
-				}
-			}
+			fn := tt.fnFactory(&calls)
 
 			err := tt.policy.Do(fn)
 			elapsed := time.Since(start)
@@ -238,6 +246,7 @@ func TestPolicy_DoWithContext(t *testing.T) {
 	tests := []struct {
 		name        string
 		setupCtx    func() (context.Context, context.CancelFunc)
+		testFunc    func(*testing.T, *Policy, context.Context, context.CancelFunc, *TestContextDoWithParams)
 		wantErr     bool
 		errMsg      string
 		wantCalls   int
@@ -249,40 +258,7 @@ func TestPolicy_DoWithContext(t *testing.T) {
 			setupCtx: func() (context.Context, context.CancelFunc) {
 				return context.WithCancel(context.Background())
 			},
-			wantErr:  true,
-			errMsg:   "canceled",
-			maxCalls: 3,
-		},
-		{
-			name: "context already canceled",
-			setupCtx: func() (context.Context, context.CancelFunc) {
-				ctx, cancel := context.WithCancel(context.Background())
-				cancel()
-				return ctx, cancel
-			},
-			wantErr:     true,
-			errMsg:      "canceled",
-			wantCalls:   0,
-			description: "should fail immediately if context canceled",
-		},
-		{
-			name: "passing context to function",
-			setupCtx: func() (context.Context, context.CancelFunc) {
-				return context.Background(), func() {}
-			},
-			wantErr:   false,
-			wantCalls: 2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := NewPolicy()
-			ctx, cancel := tt.setupCtx()
-			defer cancel()
-
-			switch tt.name {
-			case "context canceled during retry":
+			testFunc: func(t *testing.T, p *Policy, ctx context.Context, cancel context.CancelFunc, params *TestContextDoWithParams) {
 				calls := int32(0)
 				done := make(chan error)
 				go func() {
@@ -297,18 +273,39 @@ func TestPolicy_DoWithContext(t *testing.T) {
 
 				err := <-done
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
+				assert.Contains(t, err.Error(), params.errMsg)
 				assert.True(t, atomic.LoadInt32(&calls) <= 3)
-
-			case "context already canceled":
+			},
+			wantErr:  true,
+			errMsg:   "canceled",
+			maxCalls: 3,
+		},
+		{
+			name: "context already canceled",
+			setupCtx: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			testFunc: func(t *testing.T, p *Policy, ctx context.Context, cancel context.CancelFunc, params *TestContextDoWithParams) {
 				err := p.DoWithContext(ctx, func(ctx context.Context) error {
 					t.Fatal("function should not be called")
 					return nil
 				})
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-
-			case "passing context to function":
+				assert.Contains(t, err.Error(), params.errMsg)
+			},
+			wantErr:     true,
+			errMsg:      "canceled",
+			wantCalls:   0,
+			description: "should fail immediately if context canceled",
+		},
+		{
+			name: "passing context to function",
+			setupCtx: func() (context.Context, context.CancelFunc) {
+				return context.Background(), func() {}
+			},
+			testFunc: func(t *testing.T, p *Policy, ctx context.Context, cancel context.CancelFunc, params *TestContextDoWithParams) {
 				calls := 0
 				err := p.DoWithContext(ctx, func(ctx context.Context) error {
 					calls++
@@ -319,10 +316,36 @@ func TestPolicy_DoWithContext(t *testing.T) {
 					return nil
 				})
 				assert.NoError(t, err)
-				assert.Equal(t, tt.wantCalls, calls)
+				assert.Equal(t, params.wantCalls, calls)
+			},
+			wantErr:   false,
+			wantCalls: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPolicy()
+			ctx, cancel := tt.setupCtx()
+			defer cancel()
+
+			params := &TestContextDoWithParams{
+				wantErr:   tt.wantErr,
+				errMsg:    tt.errMsg,
+				wantCalls: tt.wantCalls,
+				maxCalls:  tt.maxCalls,
 			}
+
+			tt.testFunc(t, p, ctx, cancel, params)
 		})
 	}
+}
+
+type TestContextDoWithParams struct {
+	wantErr   bool
+	errMsg    string
+	wantCalls int
+	maxCalls  int
 }
 
 func TestExponentialBackoff(t *testing.T) {
@@ -466,38 +489,14 @@ func TestConstantBackoff(t *testing.T) {
 func TestConvenience_Functions(t *testing.T) {
 	tests := []struct {
 		name        string
-		fn          func() error
-		ctxFn       func(ctx context.Context) error
+		testFunc    func(*testing.T, *ConvenienceTestParams)
 		wantErr     bool
 		wantCalls   int
 		description string
 	}{
 		{
 			name: "Do convenience function",
-			fn: func() error {
-				t.Fatal("should be overridden")
-				return nil
-			},
-			wantErr:     false,
-			wantCalls:   3,
-			description: "should retry with default policy",
-		},
-		{
-			name: "DoWithContext convenience function",
-			ctxFn: func(ctx context.Context) error {
-				t.Fatal("should be overridden")
-				return nil
-			},
-			wantErr:     false,
-			wantCalls:   2,
-			description: "should retry with context",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			switch tt.name {
-			case "Do convenience function":
+			testFunc: func(t *testing.T, p *ConvenienceTestParams) {
 				calls := 0
 				err := Do(func() error {
 					calls++
@@ -507,9 +506,15 @@ func TestConvenience_Functions(t *testing.T) {
 					return nil
 				})
 				assert.NoError(t, err)
-				assert.Equal(t, tt.wantCalls, calls)
-
-			case "DoWithContext convenience function":
+				assert.Equal(t, p.wantCalls, calls)
+			},
+			wantErr:     false,
+			wantCalls:   3,
+			description: "should retry with default policy",
+		},
+		{
+			name: "DoWithContext convenience function",
+			testFunc: func(t *testing.T, p *ConvenienceTestParams) {
 				ctx := context.Background()
 				calls := 0
 				err := DoWithContext(ctx, func(ctx context.Context) error {
@@ -520,49 +525,41 @@ func TestConvenience_Functions(t *testing.T) {
 					return nil
 				})
 				assert.NoError(t, err)
-				assert.Equal(t, tt.wantCalls, calls)
+				assert.Equal(t, p.wantCalls, calls)
+			},
+			wantErr:     false,
+			wantCalls:   2,
+			description: "should retry with context",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := &ConvenienceTestParams{
+				wantErr:   tt.wantErr,
+				wantCalls: tt.wantCalls,
 			}
+			tt.testFunc(t, params)
 		})
 	}
+}
+
+type ConvenienceTestParams struct {
+	wantErr   bool
+	wantCalls int
 }
 
 func TestRetryIf(t *testing.T) {
 	tests := []struct {
 		name        string
-		ctxFn       func(ctx context.Context) error
-		check       func(error) bool
+		testFunc    func(*testing.T, *Policy, *RetryIfTestParams)
 		wantErr     bool
 		wantCalls   int
 		description string
 	}{
 		{
 			name: "retry on specific errors",
-			ctxFn: func(ctx context.Context) error {
-				t.Fatal("should be overridden")
-				return nil
-			},
-			wantErr:     true,
-			wantCalls:   2,
-			description: "should stop on non-retryable error",
-		},
-		{
-			name: "stop on non-retryable error",
-			ctxFn: func(ctx context.Context) error {
-				t.Fatal("should be overridden")
-				return nil
-			},
-			wantErr:     true,
-			wantCalls:   3,
-			description: "should stop at specific error",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := NewPolicy()
-
-			switch tt.name {
-			case "retry on specific errors":
+			testFunc: func(t *testing.T, p *Policy, params *RetryIfTestParams) {
 				retryableErr := errors.New("retryable")
 				nonRetryableErr := errors.New("non-retryable")
 				calls := 0
@@ -581,9 +578,15 @@ func TestRetryIf(t *testing.T) {
 
 				err := p.DoWithContext(context.Background(), fn)
 				assert.Error(t, err)
-				assert.Equal(t, tt.wantCalls, calls)
-
-			case "stop on non-retryable error":
+				assert.Equal(t, params.wantCalls, calls)
+			},
+			wantErr:     true,
+			wantCalls:   2,
+			description: "should stop on non-retryable error",
+		},
+		{
+			name: "stop on non-retryable error",
+			testFunc: func(t *testing.T, p *Policy, params *RetryIfTestParams) {
 				calls := 0
 				check := func(err error) bool {
 					return err.Error() != "stop"
@@ -599,10 +602,29 @@ func TestRetryIf(t *testing.T) {
 
 				err := p.DoWithContext(context.Background(), fn)
 				assert.Error(t, err)
-				assert.Equal(t, tt.wantCalls, calls)
+				assert.Equal(t, params.wantCalls, calls)
+			},
+			wantErr:     true,
+			wantCalls:   3,
+			description: "should stop at specific error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPolicy()
+			params := &RetryIfTestParams{
+				wantErr:   tt.wantErr,
+				wantCalls: tt.wantCalls,
 			}
+			tt.testFunc(t, p, params)
 		})
 	}
+}
+
+type RetryIfTestParams struct {
+	wantErr   bool
+	wantCalls int
 }
 
 func TestRetrySpecificErrors(t *testing.T) {

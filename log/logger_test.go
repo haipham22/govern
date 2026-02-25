@@ -2,78 +2,123 @@ package log
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
+// Test helpers
+
+func assertLoggerNotNil(t *testing.T, logger *zap.SugaredLogger) {
+	t.Helper()
+	require.NotNil(t, logger, "New() returned nil logger")
+}
+
 func TestNew(t *testing.T) {
 	logger := New()
-	if logger == nil {
-		t.Fatal("New() returned nil logger")
-	}
+	assertLoggerNotNil(t, logger)
 }
 
-func TestNewWithLevel(t *testing.T) {
-	tests := []struct {
-		name  string
-		level zapcore.Level
-	}{
-		{"debug", zapcore.DebugLevel},
-		{"info", zapcore.InfoLevel},
-		{"warn", zapcore.WarnLevel},
-		{"error", zapcore.ErrorLevel},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logger := New(WithLevel(tt.level))
-			if logger == nil {
-				t.Fatal("New() returned nil logger")
-			}
-		})
-	}
-}
-
-func TestNewWithLevelString(t *testing.T) {
-	tests := []struct {
-		name  string
-		level string
-	}{
-		{"debug", "debug"},
-		{"info", "info"},
-		{"warn", "warn"},
-		{"error", "error"},
-		{"invalid", "invalid"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logger := New(WithLevelString(tt.level))
-			if logger == nil {
-				t.Fatal("New() returned nil logger")
-			}
-		})
-	}
-}
-
-func TestNewWithEncoding(t *testing.T) {
+func TestNewWithOptions(t *testing.T) {
 	tests := []struct {
 		name     string
-		encoding string
+		option   Option
+		validate func(*testing.T, *zap.SugaredLogger)
 	}{
-		{"console", "console"},
-		{"json", "json"},
+		{
+			name:   "with debug level",
+			option: WithLevel(zapcore.DebugLevel),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with info level",
+			option: WithLevel(zapcore.InfoLevel),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with warn level",
+			option: WithLevel(zapcore.WarnLevel),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with error level",
+			option: WithLevel(zapcore.ErrorLevel),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with debug level string",
+			option: WithLevelString("debug"),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with info level string",
+			option: WithLevelString("info"),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with warn level string",
+			option: WithLevelString("warn"),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with error level string",
+			option: WithLevelString("error"),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with invalid level string",
+			option: WithLevelString("invalid"),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				// Should still create logger, just ignore invalid level
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with console encoding",
+			option: WithEncoding("console"),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with json encoding",
+			option: WithEncoding("json"),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
+		{
+			name:   "with development mode",
+			option: WithDevelopment(true),
+			validate: func(t *testing.T, logger *zap.SugaredLogger) {
+				assertLoggerNotNil(t, logger)
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := New(WithEncoding(tt.encoding))
-			if logger == nil {
-				t.Fatal("New() returned nil logger")
-			}
+			logger := New(tt.option)
+			tt.validate(t, logger)
 		})
 	}
 }
@@ -94,18 +139,18 @@ func TestHelpers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// These should not panic
-			tt.logFn("test message")
-			tt.logFfn("test %s", "message")
-			tt.logWfn("test", "key", "value")
+			assert.NotPanics(t, func() {
+				tt.logFn("test message")
+				tt.logFfn("test %s", "message")
+				tt.logWfn("test", "key", "value")
+			})
 		})
 	}
 }
 
 func TestDefault(t *testing.T) {
 	logger := Default()
-	if logger == nil {
-		t.Fatal("Default() returned nil logger")
-	}
+	assertLoggerNotNil(t, logger)
 }
 
 func TestSetDefault(t *testing.T) {
@@ -115,29 +160,16 @@ func TestSetDefault(t *testing.T) {
 	newLogger := zap.NewNop().Sugar()
 	SetDefault(newLogger)
 
-	if Default() == original {
-		t.Error("SetDefault() did not change the default logger")
-	}
+	assert.NotEqual(t, original, Default(), "SetDefault() did not change the default logger")
 }
 
 func TestWithOutput(t *testing.T) {
 	var buf bytes.Buffer
 	logger := New(WithOutput(zapcore.AddSync(&buf)))
-	if logger == nil {
-		t.Fatal("New() returned nil logger")
-	}
+	assertLoggerNotNil(t, logger)
 
 	logger.Info("test message")
-	if !strings.Contains(buf.String(), "test message") {
-		t.Error("Expected log message in output")
-	}
-}
-
-func TestWithDevelopment(t *testing.T) {
-	logger := New(WithDevelopment(true))
-	if logger == nil {
-		t.Fatal("New() returned nil logger")
-	}
+	assert.Contains(t, buf.String(), "test message", "Expected log message in output")
 }
 
 func TestSync(t *testing.T) {

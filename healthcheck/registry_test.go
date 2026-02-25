@@ -45,109 +45,104 @@ func TestRegistry_Unregister(t *testing.T) {
 	})
 }
 
+// Validation helper functions for table-driven tests
+type responseValidator func(*testing.T, *Response)
+
+func validateAllChecksPassing(checks ...string) responseValidator {
+	return func(t *testing.T, resp *Response) {
+		t.Helper()
+		assert.Len(t, resp.Checks, len(checks))
+		for _, check := range checks {
+			assert.Equal(t, StatusPassing, resp.Checks[check].Status)
+		}
+	}
+}
+
+func validateMixedStatus(checksPassing []string, checksFailing map[string]string) responseValidator {
+	return func(t *testing.T, resp *Response) {
+		t.Helper()
+		totalChecks := len(checksPassing) + len(checksFailing)
+		assert.Len(t, resp.Checks, totalChecks)
+
+		for _, check := range checksPassing {
+			assert.Equal(t, StatusPassing, resp.Checks[check].Status)
+		}
+
+		for check, msg := range checksFailing {
+			assert.Equal(t, StatusFailing, resp.Checks[check].Status)
+			assert.Equal(t, msg, resp.Checks[check].Message)
+		}
+	}
+}
+
+func validateSingleCheckFailing(status Status, message string) responseValidator {
+	return func(t *testing.T, resp *Response) {
+		t.Helper()
+		assert.Len(t, resp.Checks, 1)
+		assert.Equal(t, status, resp.Checks["slow"].Status)
+		assert.Equal(t, message, resp.Checks["slow"].Message)
+	}
+}
+
+func validatePanicCheck(checkName string) responseValidator {
+	return func(t *testing.T, resp *Response) {
+		t.Helper()
+		assert.Equal(t, StatusFailing, resp.Checks[checkName].Status)
+		assert.Contains(t, resp.Checks[checkName].Message, "panic")
+	}
+}
+
+func validateOnlyOverallStatus(status Status) responseValidator {
+	return func(t *testing.T, resp *Response) {
+		t.Helper()
+		assert.Equal(t, status, resp.Status)
+	}
+}
+
 func TestRegistry_Run(t *testing.T) {
 	tests := []struct {
 		name       string
 		setup      func(*Registry)
 		wantStatus Status
-		validate   func(*testing.T, *Response)
+		validate   responseValidator
+		useCancel  bool
 	}{
 		{
-			name: "all checks passing",
-			setup: func(r *Registry) {
-				r.Register("db", func(ctx context.Context) error {
-					return nil
-				})
-				r.Register("cache", func(ctx context.Context) error {
-					return nil
-				})
-			},
+			name:       "all checks passing",
+			setup:      setupMultipleChecks(nil),
 			wantStatus: StatusPassing,
-			validate: func(t *testing.T, resp *Response) {
-				assert.Len(t, resp.Checks, 2)
-				assert.Equal(t, StatusPassing, resp.Checks["db"].Status)
-				assert.Equal(t, StatusPassing, resp.Checks["cache"].Status)
-			},
+			validate:   validateAllChecksPassing("db", "cache"),
 		},
 		{
-			name: "one check failing",
-			setup: func(r *Registry) {
-				r.Register("db", func(ctx context.Context) error {
-					return nil
-				})
-				r.Register("cache", func(ctx context.Context) error {
-					return errors.New("connection failed")
-				})
-			},
+			name:       "one check failing",
+			setup:      setupMultipleChecks(map[string]string{"cache": "connection failed"}),
 			wantStatus: StatusFailing,
-			validate: func(t *testing.T, resp *Response) {
-				assert.Len(t, resp.Checks, 2)
-				assert.Equal(t, StatusPassing, resp.Checks["db"].Status)
-				assert.Equal(t, StatusFailing, resp.Checks["cache"].Status)
-				assert.Equal(t, "connection failed", resp.Checks["cache"].Message)
-			},
+			validate:   validateMixedStatus([]string{"db"}, map[string]string{"cache": "connection failed"}),
 		},
 		{
-			name: "check timeout",
-			setup: func(r *Registry) {
-				r.Register("slow", func(ctx context.Context) error {
-					select {
-					case <-time.After(10 * time.Second):
-						return nil
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-				}, WithTimeout(100*time.Millisecond))
-			},
+			name:       "check timeout",
+			setup:      setupSlowCheck(10*time.Second, 100*time.Millisecond),
 			wantStatus: StatusFailing,
-			validate: func(t *testing.T, resp *Response) {
-				assert.Equal(t, StatusFailing, resp.Checks["slow"].Status)
-				assert.Equal(t, "timeout", resp.Checks["slow"].Message)
-			},
+			validate:   validateSingleCheckFailing(StatusFailing, "timeout"),
 		},
 		{
-			name: "context canceled during run",
-			setup: func(r *Registry) {
-				r.Register("check", func(ctx context.Context) error {
-					select {
-					case <-time.After(5 * time.Second):
-						return nil
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-				})
-			},
+			name:       "context canceled during run",
+			setup:      setupSlowCheck(5*time.Second, 0),
 			wantStatus: StatusFailing,
-			validate: func(t *testing.T, resp *Response) {
-				// Check fails when context is canceled
-				assert.Equal(t, StatusFailing, resp.Status)
-			},
+			validate:   validateOnlyOverallStatus(StatusFailing),
+			useCancel:  true,
 		},
 		{
-			name: "panic with DisablePanic option",
-			setup: func(r *Registry) {
-				r.Register("panic", func(ctx context.Context) error {
-					panic("test panic")
-				}, DisablePanic())
-			},
+			name:       "panic with DisablePanic option",
+			setup:      setupPanicCheck(true),
 			wantStatus: StatusFailing,
-			validate: func(t *testing.T, resp *Response) {
-				assert.Equal(t, StatusFailing, resp.Checks["panic"].Status)
-				assert.Contains(t, resp.Checks["panic"].Message, "panic")
-			},
+			validate:   validatePanicCheck("panic"),
 		},
 		{
-			name: "panic without DisablePanic option",
-			setup: func(r *Registry) {
-				r.Register("panic", func(ctx context.Context) error {
-					panic("test panic")
-				})
-			},
+			name:       "panic without DisablePanic option",
+			setup:      setupPanicCheck(false),
 			wantStatus: StatusFailing,
-			validate: func(t *testing.T, resp *Response) {
-				// Panic in goroutine doesn't propagate - the check will fail instead
-				assert.Contains(t, resp.Checks["panic"].Message, "panic")
-			},
+			validate:   validatePanicCheck("panic"),
 		},
 	}
 
@@ -157,7 +152,7 @@ func TestRegistry_Run(t *testing.T) {
 			tt.setup(r)
 
 			var resp *Response
-			if tt.name == "context canceled during run" {
+			if tt.useCancel {
 				ctx, cancel := context.WithCancel(context.Background())
 				go func() {
 					time.Sleep(50 * time.Millisecond)
@@ -173,6 +168,59 @@ func TestRegistry_Run(t *testing.T) {
 				tt.validate(t, resp)
 			}
 		})
+	}
+}
+
+// Setup helper functions for test cases
+func setupMultipleChecks(failingChecks map[string]string) func(*Registry) {
+	return func(r *Registry) {
+		r.Register("db", func(ctx context.Context) error {
+			return nil
+		})
+		if failingChecks != nil {
+			for name, msg := range failingChecks {
+				r.Register(name, func(ctx context.Context) error {
+					return errors.New(msg)
+				})
+			}
+		} else {
+			r.Register("cache", func(ctx context.Context) error {
+				return nil
+			})
+		}
+	}
+}
+
+func setupSlowCheck(sleepDuration, timeout time.Duration) func(*Registry) {
+	return func(r *Registry) {
+		check := func(ctx context.Context) error {
+			select {
+			case <-time.After(sleepDuration):
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		if timeout > 0 {
+			r.Register("slow", check, WithTimeout(timeout))
+		} else {
+			r.Register("slow", check)
+		}
+	}
+}
+
+func setupPanicCheck(disablePanic bool) func(*Registry) {
+	return func(r *Registry) {
+		check := func(ctx context.Context) error {
+			panic("test panic")
+		}
+
+		if disablePanic {
+			r.Register("panic", check, DisablePanic())
+		} else {
+			r.Register("panic", check)
+		}
 	}
 }
 

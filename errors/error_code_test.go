@@ -4,8 +4,21 @@ import (
 	"io"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/haipham22/govern/errors"
 )
+
+// Test helpers
+
+func assertErrorCode(t *testing.T, err error, wantCode errors.ErrorCode) {
+	t.Helper()
+	code, ok := errors.GetCode(err)
+	assert.True(t, ok, "GetCode() should return true")
+	assert.Equal(t, wantCode, code, "GetCode() should return correct code")
+}
+
 
 func TestErrorWithCode(t *testing.T) {
 	tests := []struct {
@@ -37,9 +50,8 @@ func TestErrorWithCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &errors.ErrorWithCode{Code: tt.code, Err: tt.err}
-			if got := e.Error(); got != tt.want {
-				t.Errorf("Error() = %v, want %v", got, tt.want)
-			}
+			got := e.Error()
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -48,47 +60,30 @@ func TestErrorWithCode_Unwrap(t *testing.T) {
 	baseErr := errors.New("base error")
 	e := &errors.ErrorWithCode{Code: errors.CodeInternal, Err: baseErr}
 
-	if unwrapped := e.Unwrap(); unwrapped != baseErr {
-		t.Errorf("Unwrap() = %v, want %v", unwrapped, baseErr)
-	}
+	unwrapped := e.Unwrap()
+	assert.Equal(t, baseErr, unwrapped, "Unwrap() should return the underlying error")
 }
 
 func TestNewCode(t *testing.T) {
 	err := errors.NewCode(errors.CodeNotFound, "user not found")
-	if err == nil {
-		t.Fatal("NewCode() returned nil")
-	}
+	require.NotNil(t, err, "NewCode() should not return nil")
 
-	code, ok := errors.GetCode(err)
-	if !ok {
-		t.Fatal("GetCode() returned false")
-	}
-	if code != errors.CodeNotFound {
-		t.Errorf("GetCode() = %v, want %v", code, errors.CodeNotFound)
-	}
+	assertErrorCode(t, err, errors.CodeNotFound)
 }
 
 func TestWrapCode(t *testing.T) {
-	baseErr := errors.New("base error")
-	err := errors.WrapCode(errors.CodeInternal, baseErr)
+	t.Run("wraps error successfully", func(t *testing.T) {
+		baseErr := errors.New("base error")
+		err := errors.WrapCode(errors.CodeInternal, baseErr)
 
-	if err == nil {
-		t.Fatal("WrapCode() returned nil")
-	}
+		require.NotNil(t, err, "WrapCode() should not return nil")
+		assertErrorCode(t, err, errors.CodeInternal)
+	})
 
-	code, ok := errors.GetCode(err)
-	if !ok {
-		t.Fatal("GetCode() returned false")
-	}
-	if code != errors.CodeInternal {
-		t.Errorf("GetCode() = %v, want %v", code, errors.CodeInternal)
-	}
-
-	// Test wrapping nil
-	err = errors.WrapCode(errors.CodeInternal, nil)
-	if err != nil {
-		t.Errorf("WrapCode(nil) = %v, want nil", err)
-	}
+	t.Run("wrapping nil returns nil", func(t *testing.T) {
+		err := errors.WrapCode(errors.CodeInternal, nil)
+		assert.Nil(t, err, "WrapCode(nil) should return nil")
+	})
 }
 
 func TestGetCode(t *testing.T) {
@@ -124,12 +119,8 @@ func TestGetCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			code, ok := errors.GetCode(tt.err)
-			if ok != tt.wantOk {
-				t.Errorf("GetCode() ok = %v, want %v", ok, tt.wantOk)
-			}
-			if code != tt.wantCode {
-				t.Errorf("GetCode() code = %v, want %v", code, tt.wantCode)
-			}
+			assert.Equal(t, tt.wantOk, ok, "GetCode() ok status")
+			assert.Equal(t, tt.wantCode, code, "GetCode() code value")
 		})
 	}
 }
@@ -165,9 +156,8 @@ func TestIsCode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := errors.IsCode(tt.err, tt.code); got != tt.want {
-				t.Errorf("IsCode() = %v, want %v", got, tt.want)
-			}
+			got := errors.IsCode(tt.err, tt.code)
+			assert.Equal(t, tt.want, got, "IsCode() result")
 		})
 	}
 }
@@ -186,12 +176,8 @@ func TestPredefinedErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.err.Code != tt.code {
-				t.Errorf("%s.Code = %v, want %v", tt.name, tt.err.Code, tt.code)
-			}
-			if !errors.IsCode(tt.err, tt.code) {
-				t.Errorf("%s should be identified with IsCode", tt.name)
-			}
+			assert.Equal(t, tt.code, tt.err.Code, "%s.Code", tt.name)
+			assert.True(t, errors.IsCode(tt.err, tt.code), "%s should be identified with IsCode", tt.name)
 		})
 	}
 }

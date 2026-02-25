@@ -1,9 +1,5 @@
 package echo
 
-import (
-	"github.com/haipham22/govern/http/jwt"
-)
-
 // ExampleWithSwaggerAuth_bearerToken shows how to configure Swagger UI
 // with Bearer token authentication (JWT).
 //
@@ -14,78 +10,70 @@ import (
 //	// @name Authorization
 //	// @description Enter the token with the `Bearer ` prefix, e.g. "Bearer abcde12345"
 func ExampleWithSwaggerAuth_bearerToken() {
-	jwtConfig := &jwt.MiddlewareConfig{
-		Config: &jwt.Config{
-			Secret: "your-secret-key",
+	// Create swagger config with Bearer token authentication
+	swaggerConfig := &swaggerSettings{
+		enabled: true,
+		auth: &SwaggerAuth{
+			Type:        "Bearer",
+			Description: "JWT token",
+			Name:        "Authorization",
+			In:          "header",
 		},
-		SkipPaths: []string{"/health", "/swagger/*"},
 	}
 
-	server := NewServer(":8080",
-		WithJWT(jwtConfig),
-		WithEchoSwagger(
-			WithSwaggerEnabled(true),
-			WithSwaggerAuth(&SwaggerAuth{
-				Type:        "Bearer",
-				Description: "JWT token",
-				Name:        "Authorization",
-				In:          "header",
-			}),
-		),
-	)
-
-	_ = server
+	dummyOperation(swaggerConfig)
 }
 
 // ExampleWithSwaggerAuth_apiKey shows API key authentication.
 func ExampleWithSwaggerAuth_apiKey() {
-	server := NewServer(":8080",
-		WithEchoSwagger(
-			WithSwaggerEnabled(true),
-			WithSwaggerAuth(&SwaggerAuth{
-				Type:        "ApiKey",
-				Description: "API key authentication",
-				Name:        "X-API-Key",
-				In:          "header",
-			}),
-		),
-	)
+	// Create swagger config with API key authentication
+	swaggerConfig := &swaggerSettings{
+		enabled: true,
+		auth: &SwaggerAuth{
+			Type:        "ApiKey",
+			Description: "API key authentication",
+			Name:        "X-API-Key",
+			In:          "header",
+		},
+	}
 
-	_ = server
+	dummyOperation(swaggerConfig)
 }
 
 // ExampleWithSwaggerAuth_basicAuth shows Basic authentication.
 func ExampleWithSwaggerAuth_basicAuth() {
-	server := NewServer(":8080",
-		WithEchoSwagger(
-			WithSwaggerEnabled(true),
-			WithSwaggerAuth(&SwaggerAuth{
-				Type:        "Basic",
-				Description: "Basic authentication",
-			}),
-		),
-	)
+	// Create swagger config with Basic authentication
+	swaggerConfig := &swaggerSettings{
+		enabled: true,
+		auth: &SwaggerAuth{
+			Type:        "Basic",
+			Description: "Basic authentication",
+		},
+	}
 
-	_ = server
+	dummyOperation(swaggerConfig)
 }
 
 // ExampleWithSwaggerAuth_oauth2 shows OAuth2 authentication.
 func ExampleWithSwaggerAuth_oauth2() {
-	server := NewServer(":8080",
-		WithEchoSwagger(
-			WithSwaggerEnabled(true),
-			WithSwaggerAuth(&SwaggerAuth{
-				Type:             "OAuth2",
-				Flow:             "accessCode",
-				AuthorizationURL: "https://example.com/oauth/authorize",
-				TokenURL:         "https://example.com/oauth/token",
-				Scopes: map[string]string{
-					"read":  "Read access",
-					"write": "Write access",
-				},
-			}),
-		),
-	)
+	// Create swagger config with OAuth2 authentication
+	swaggerConfig := &swaggerSettings{
+		enabled: true,
+		auth: &SwaggerAuth{
+			Type:             "OAuth2",
+			Flow:             "accessCode",
+			AuthorizationURL: "https://example.com/oauth/authorize",
+			TokenURL:         "https://example.com/oauth/token",
+			Scopes: map[string]string{
+				"read":  "Read access",
+				"write": "Write access",
+			},
+		},
+	}
 
-	_ = server
+	dummyOperation(swaggerConfig)
+}
+
+func dummyOperation(config *swaggerSettings) {
+	_ = config
 }

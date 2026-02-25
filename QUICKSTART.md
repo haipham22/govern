@@ -109,50 +109,6 @@ cfg, err := config.LoadWithOptions[Config](
 
 **Priority**: System ENV > .env file > YAML values
 
-## Echo Server with JWT
-
-Create an HTTP server with JWT authentication using Echo framework:
-
-```go
-package main
-
-import (
-    httpEcho "github.com/haipham22/govern/http/echo"
-    "github.com/haipham22/govern/http/jwt"
-    "github.com/labstack/echo/v4"
-    "net/http"
-)
-
-func main() {
-    server := httpEcho.NewServer(":8080")
-
-    // Public route
-    server.GET("/health", func(c echo.Context) error {
-        return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
-    })
-
-    // JWT configuration
-    jwtConfig := &jwt.MiddlewareConfig{
-        Config:         jwt.DefaultConfig(),
-        TokenExtractor: jwt.DefaultTokenExtractor,
-        SkipPaths:      []string{"/health", "/login"},
-    }
-    jwtConfig.Config.Secret = "your-secret-key"
-
-    // Protected routes
-    api := server.Group("/api", httpEcho.WithJWT(jwtConfig))
-    api.GET("/profile", func(c echo.Context) error {
-        claims := httpEcho.MustGetCurrentUser(c)
-        return c.JSON(http.StatusOK, map[string]interface{}{
-            "user_id":  claims.UserID,
-            "username": claims.Username,
-        })
-    })
-
-    server.Start()
-}
-```
-
 ## PostgreSQL Connection
 
 Connect to PostgreSQL with connection pooling:
@@ -194,7 +150,8 @@ package main
 import (
     "github.com/haipham22/govern/config"
     "github.com/haipham22/govern/database/postgres"
-    httpEcho "github.com/haipham22/govern/http/echo"
+    "github.com/haipham22/govern/http"
+    echo "github.com/labstack/echo/v4"
 )
 
 type Config struct {
@@ -231,11 +188,12 @@ func main() {
     defer cleanup()
 
     // 3. Start HTTP server
-    server := httpEcho.NewServer(":8080")
-    server.GET("/health", func(c echo.Context) error {
+    e := echo.New()
+    srv := http.NewServer(":8080", e)
+    e.GET("/health", func(c echo.Context) error {
         return c.JSON(200, map[string]string{"status": "ok"})
     })
-    server.Start()
+    srv.Start()
 }
 ```
 

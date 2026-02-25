@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"time"
@@ -12,11 +13,19 @@ import (
 	"github.com/haipham22/govern/log"
 )
 
+type Server interface {
+	graceful.Service
+
+	Server() *http.Server
+	Listen() (net.Listener, error)
+	Use(middleware ...Middleware)
+}
+
 // Middleware function type
 type Middleware func(http.Handler) http.Handler
 
-// Server wraps an http.Server with graceful shutdown capabilities.
-type Server struct {
+// server wraps an http.server with graceful shutdown capabilities.
+type server struct {
 	server          *http.Server
 	shutdownTimeout time.Duration
 	logger          *zap.SugaredLogger
@@ -24,12 +33,12 @@ type Server struct {
 	middlewares     []Middleware
 }
 
-// ServerOption configures a Server.
-type ServerOption func(*Server)
+// ServerOption configures a server.
+type ServerOption func(*server)
 
-// NewServer creates a new Server with graceful shutdown support.
-func NewServer(addr string, handler http.Handler, opts ...ServerOption) *Server {
-	s := &Server{
+// NewServer creates a new server with graceful shutdown support.
+func NewServer(addr string, handler http.Handler, opts ...ServerOption) Server {
+	s := &server{
 		server: &http.Server{
 			Addr:              addr,
 			Handler:           handler,
@@ -53,12 +62,12 @@ func NewServer(addr string, handler http.Handler, opts ...ServerOption) *Server 
 }
 
 // Use adds middleware to the server.
-func (s *Server) Use(middleware ...Middleware) {
+func (s *server) Use(middleware ...Middleware) {
 	s.middlewares = append(s.middlewares, middleware...)
 }
 
 // buildHandler builds the final handler with middleware chain.
-func (s *Server) buildHandler() http.Handler {
+func (s *server) buildHandler() http.Handler {
 	handler := s.server.Handler
 	for i := len(s.middlewares) - 1; i >= 0; i-- {
 		handler = s.middlewares[i](handler)
@@ -67,7 +76,7 @@ func (s *Server) buildHandler() http.Handler {
 }
 
 // Start begins serving and blocks until the server is shut down gracefully.
-func (s *Server) Start() error {
+func (s *server) Start(_ context.Context) error {
 	// Build handler with middleware
 	s.server.Handler = s.buildHandler()
 
@@ -77,11 +86,11 @@ func (s *Server) Start() error {
 		return s.server.Shutdown(ctx)
 	})
 
-	// Start server in managed goroutine
+	// Start a server in a managed goroutine
 	s.manager.Go(func(ctx context.Context) error {
-		s.logger.Infow("Server starting", "addr", s.server.Addr)
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			s.logger.Errorw("Server error", "error", err)
+		s.logger.Infow("server starting", "addr", s.server.Addr)
+		if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Errorw("server error", "error", err)
 			return err
 		}
 		return nil
@@ -96,16 +105,15 @@ func (s *Server) Start() error {
 }
 
 // Shutdown triggers a graceful shutdown programmatically.
-func (s *Server) Shutdown(ctx context.Context) error {
+func (s *server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
-// Server returns the underlying http.Server for direct access if needed.
-func (s *Server) Server() *http.Server {
+func (s *server) Server() *http.Server {
 	return s.server
 }
 
 // Listen returns the listener for testing purposes.
-func (s *Server) Listen() (net.Listener, error) {
+func (s *server) Listen() (net.Listener, error) {
 	return net.Listen("tcp", s.server.Addr)
 }

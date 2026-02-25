@@ -149,15 +149,15 @@ func TestPolicy_Do_MaxDuration(t *testing.T) {
 
 func TestPolicy_Do_BackingOff(t *testing.T) {
 	tests := []struct {
-		name           string
-		policy         *Policy
-		fn             func() error
-		wantErr        bool
-		wantCalls      int
-		minElapsed     time.Duration
-		maxElapsed     time.Duration
-		expectedDelay  time.Duration
-		description    string
+		name          string
+		policy        *Policy
+		fn            func() error
+		wantErr       bool
+		wantCalls     int
+		minElapsed    time.Duration
+		maxElapsed    time.Duration
+		expectedDelay time.Duration
+		description   string
 	}{
 		{
 			name:       "backoff option applied",
@@ -327,13 +327,13 @@ func TestPolicy_DoWithContext(t *testing.T) {
 
 func TestExponentialBackoff(t *testing.T) {
 	tests := []struct {
-		name         string
-		backoff      *exponentialBackoff
-		attempts     []int
-		minDelays    []time.Duration
-		maxDelays    []time.Duration
-		exactDelays  []time.Duration
-		description  string
+		name        string
+		backoff     *exponentialBackoff
+		attempts    []int
+		minDelays   []time.Duration
+		maxDelays   []time.Duration
+		exactDelays []time.Duration
+		description string
 	}{
 		{
 			name: "with jitter",
@@ -649,15 +649,15 @@ func TestNonRetryableError(t *testing.T) {
 	wrapped := &nonRetryableError{err: baseErr}
 
 	tests := []struct {
-		name     string
-		err      error
-		contains string
+		name      string
+		err       error
+		contains  string
 		unwrapped error
 	}{
 		{
-			name:      "error message",
-			err:       wrapped,
-			contains:  "non-retryable",
+			name:     "error message",
+			err:      wrapped,
+			contains: "non-retryable",
 		},
 		{
 			name:      "unwrapped error",
@@ -729,10 +729,10 @@ func TestDefaultPolicy(t *testing.T) {
 			actual:   p.maxDuration,
 		},
 		{
-			name:     "backoff type",
-			field:    "backoff",
+			name:      "backoff type",
+			field:     "backoff",
 			checkType: true,
-			typeName: "*retry.exponentialBackoff",
+			typeName:  "*retry.exponentialBackoff",
 		},
 	}
 

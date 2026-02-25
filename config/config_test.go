@@ -36,13 +36,13 @@ func TestLoad(t *testing.T) {
 
 func TestLoad_ENVOverride(t *testing.T) {
 	tests := []struct {
-		name           string
-		envVars        map[string]string
-		yaml           string
-		loadOptions    []Option
-		expectedPort   int
-		wantErr        bool
-		setupCleanup   func()
+		name         string
+		envVars      map[string]string
+		yaml         string
+		loadOptions  []Option
+		expectedPort int
+		wantErr      bool
+		setupCleanup func()
 	}{
 		{
 			name: "ENV override without prefix",
@@ -351,13 +351,13 @@ func ExampleLoad() {
 
 func TestLoadFromEnv(t *testing.T) {
 	tests := []struct {
-		name           string
-		envContent     string
-		loadOptions    []Option
-		wantErr        bool
-		errMsg         string
-		expectedHost   string
-		expectedPort   int
+		name         string
+		envContent   string
+		loadOptions  []Option
+		wantErr      bool
+		errMsg       string
+		expectedHost string
+		expectedPort int
 	}{
 		{
 			name: "successful load from .env",
@@ -374,9 +374,9 @@ SERVER_PORT=8080
 			envContent: `SERVER_HOST=localhost
 SERVER_PORT=99999
 `,
-			loadOptions:  []Option{},
-			wantErr:      true,
-			errMsg:       "validate",
+			loadOptions: []Option{},
+			wantErr:     true,
+			errMsg:      "validate",
 		},
 		{
 			name: "load from .env with prefix",

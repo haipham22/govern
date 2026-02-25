@@ -47,10 +47,10 @@ func TestRegistry_Unregister(t *testing.T) {
 
 func TestRegistry_Run(t *testing.T) {
 	tests := []struct {
-		name     string
-		setup    func(*Registry)
+		name       string
+		setup      func(*Registry)
 		wantStatus Status
-		validate func(*testing.T, *Response)
+		validate   func(*testing.T, *Response)
 	}{
 		{
 			name: "all checks passing",

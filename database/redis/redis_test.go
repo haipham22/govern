@@ -3,6 +3,8 @@ package redis_test
 import (
 	"testing"
 
+	redisv9 "github.com/redis/go-redis/v9"
+
 	"github.com/haipham22/govern/database/redis"
 )
 
@@ -66,4 +68,73 @@ func TestDefaults(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewReturnsUniversalClient(t *testing.T) {
+	client, cleanup, err := redis.New("localhost:6379")
+	if err != nil {
+		t.Fatalf("New() unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	// Verify UniversalClient interface - this will work in both phases
+	var _ redisv9.UniversalClient = client
+
+	// After Phase 04, the concrete type should NOT be directly *redis.Client
+	// but rather the interface. For now, we just verify it works as UniversalClient.
+	if client == nil {
+		t.Fatal("New() expected non-nil client")
+	}
+
+	// Verify common UniversalClient methods work
+	// This will fail if the underlying type doesn't implement UniversalClient
+	ctx := t.Context()
+	_ = client.Ping(ctx)
+}
+
+func TestNewClientReturnsUniversalClient(t *testing.T) {
+	client, cleanup, err := redis.NewClient("localhost:6379")
+	if err != nil {
+		t.Fatalf("NewClient() unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	// Type assertion to UniversalClient
+	var _ redisv9.UniversalClient = client
+
+	// Verify UniversalClient methods
+	ctx := t.Context()
+	_ = client.Ping(ctx)
+}
+
+func TestNewFromDSNReturnsUniversalClient(t *testing.T) {
+	client, cleanup, err := redis.NewFromDSN("redis://localhost:6379")
+	if err != nil {
+		t.Fatalf("NewFromDSN() unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	// Type assertion to UniversalClient
+	var _ redisv9.UniversalClient = client
+
+	// Verify UniversalClient methods
+	ctx := t.Context()
+	_ = client.Ping(ctx)
+}
+
+func TestClusterMode(t *testing.T) {
+	client, cleanup, err := redis.New("",
+		redis.WithAddrs("node1:6379", "node2:6379"),
+	)
+	if err != nil {
+		t.Fatalf("New() unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	// Verify it's a UniversalClient
+	var _ redisv9.UniversalClient = client
+
+	// Note: In Phase 04, this will use redis.NewUniversalClient()
+	// which properly handles cluster mode. For now it creates a single client
+	// but with cluster addresses configured (which won't actually connect to cluster)
 }

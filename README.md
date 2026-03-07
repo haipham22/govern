@@ -57,7 +57,7 @@ See [QUICKSTART.md](./QUICKSTART.md) for installation and usage examples.
 
 ## Requirements
 
-- Go 1.25+
+- Go 1.25 or 1.26
 
 ## Development
 

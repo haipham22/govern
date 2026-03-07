@@ -1,6 +1,6 @@
 module github.com/haipham22/govern
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/bytedance/sonic v1.15.0

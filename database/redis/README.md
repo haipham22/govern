@@ -1,14 +1,15 @@
 # redis
 
-Redis connection management with go-redis/v9.
+Redis connection management with go-redis/v9. Supports both single-node and cluster configurations.
 
 ## Features
 
-- go-redis/v9 client
+- go-redis/v9 UniversalClient for standalone and cluster modes
 - Functional options pattern for configuration
 - DSN string parsing support
 - Configurable connection pool settings
 - Automatic cleanup functions
+- Cluster support with latency-based and random routing
 
 ## Installation
 
@@ -41,6 +42,19 @@ func main() {
 }
 ```
 
+### Cluster Connection
+
+```go
+client, cleanup, err := redis.New("",
+    redis.WithAddrs("node1:6379", "node2:6379", "node3:6379"),
+    redis.WithRouteByLatency(true),
+)
+if err != nil {
+    log.Fatal(err)
+}
+defer cleanup()
+```
+
 ### DSN Connection
 
 ```go
@@ -65,6 +79,9 @@ client, cleanup, err := redis.NewFromDSN("redis://:secret@localhost:6379/1?pool_
 | `WithWriteTimeout`    | Write timeout            | `3s`    |
 | `WithPoolTimeout`     | Pool timeout             | `4s`    |
 | `WithConnMaxIdleTime` | Idle connection timeout  | `5m`    |
+| `WithAddrs`           | Cluster addresses         | -       |
+| `WithRouteByLatency`  | Route by latency         | `false` |
+| `WithRouteRandomly`   | Random shard selection   | `false` |
 
 ## DSN Format
 
@@ -97,13 +114,13 @@ rediss://[:password@]host[:port][/db][?options]  # TLS
 
 ## API
 
-### `New(addr string, opts ...Option) (*redis.Client, func(), error)`
+### `New(addr string, opts ...Option) (redis.UniversalClient, func(), error)`
 
-Creates a new Redis client with explicit address.
+Creates a new Redis client with explicit address. Returns UniversalClient which supports both standalone and cluster modes.
 
-### `NewFromDSN(dsn string, opts ...Option) (*redis.Client, func(), error)`
+### `NewFromDSN(dsn string, opts ...Option) (redis.UniversalClient, func(), error)`
 
-Creates a new Redis client from a DSN string.
+Creates a new Redis client from a DSN string. Returns UniversalClient interface.
 
 ## Connection Pool Defaults
 

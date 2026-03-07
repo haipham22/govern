@@ -15,6 +15,12 @@ func New(addr string, opts ...Option) (redis.UniversalClient, func(), error) {
 
 // NewClient creates a new Redis client with an explicit address.
 // Returns UniversalClient interface supporting both single-node and cluster configurations.
+//
+// For single-node Redis, pass a single address. For cluster mode, use WithAddrs()
+// with multiple node addresses.
+//
+// The returned cleanup function closes the client connection and should be
+// called when the client is no longer needed (typically via defer).
 func NewClient(addr string, opts ...Option) (redis.UniversalClient, func(), error) {
 	cfg := defaultConfig()
 

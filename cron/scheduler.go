@@ -57,7 +57,7 @@ func New(opts ...Option) (*Scheduler, func(), error) {
 }
 
 // Start begins the scheduler (non-blocking)
-func (s *Scheduler) Start(ctx context.Context) error {
+func (s *Scheduler) Start(_ context.Context) error {
 	if !s.started.CompareAndSwap(false, true) {
 		return ErrSchedulerAlreadyStarted
 	}

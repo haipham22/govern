@@ -18,6 +18,11 @@ type Config struct {
 	WriteTimeout    time.Duration
 	PoolTimeout     time.Duration
 	ConnMaxIdleTime time.Duration
+
+	// Cluster support for UniversalClient
+	Addrs          []string // Cluster addresses
+	RouteByLatency bool     // Route by latency
+	RouteRandomly  bool     // Random route selection
 }
 
 func WithAddr(addr string) Option {
@@ -95,6 +100,28 @@ func WithPoolTimeout(d time.Duration) Option {
 func WithConnMaxIdleTime(d time.Duration) Option {
 	return func(c *Config) {
 		c.ConnMaxIdleTime = d
+	}
+}
+
+// WithAddrs sets Redis cluster addresses.
+// For single-node, use WithAddr or pass a single address.
+func WithAddrs(addrs ...string) Option {
+	return func(c *Config) {
+		c.Addrs = addrs
+	}
+}
+
+// WithRouteByLatency enables latency-based routing for cluster.
+func WithRouteByLatency(v bool) Option {
+	return func(c *Config) {
+		c.RouteByLatency = v
+	}
+}
+
+// WithRouteRandomly enables random shard selection for cluster.
+func WithRouteRandomly(v bool) Option {
+	return func(c *Config) {
+		c.RouteRandomly = v
 	}
 }
 

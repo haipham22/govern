@@ -25,7 +25,7 @@ func TestNewTaskMux(t *testing.T) {
 func TestTaskMux_Handle(t *testing.T) {
 	t.Run("register handler", func(t *testing.T) {
 		mux := NewTaskMux()
-		handler := &mockHandler{}
+		handler := &muxTestHandler{}
 
 		mux.Handle("test:task", handler)
 
@@ -43,7 +43,7 @@ func TestTaskMux_Handle(t *testing.T) {
 
 	t.Run("panic on duplicate handler", func(t *testing.T) {
 		mux := NewTaskMux()
-		handler := &mockHandler{}
+		handler := &muxTestHandler{}
 
 		mux.Handle("test:task", handler)
 
@@ -92,7 +92,7 @@ func TestTaskMux_HandleFunc(t *testing.T) {
 func TestTaskMux_HandleTask(t *testing.T) {
 	t.Run("routes to registered handler", func(t *testing.T) {
 		mux := NewTaskMux()
-		handler := &mockHandler{result: nil}
+		handler := &muxTestHandler{result: nil}
 
 		mux.Handle("test:task", handler)
 
@@ -105,7 +105,7 @@ func TestTaskMux_HandleTask(t *testing.T) {
 
 	t.Run("returns error for nil task", func(t *testing.T) {
 		mux := NewTaskMux()
-		mux.Handle("test:task", &mockHandler{})
+		mux.Handle("test:task", &muxTestHandler{})
 
 		err := mux.HandleTask(context.Background(), nil)
 
@@ -126,7 +126,7 @@ func TestTaskMux_HandleTask(t *testing.T) {
 	t.Run("returns handler error", func(t *testing.T) {
 		mux := NewTaskMux()
 		expectedErr := assert.AnError
-		handler := &mockHandler{result: expectedErr}
+		handler := &muxTestHandler{result: expectedErr}
 
 		mux.Handle("test:task", handler)
 
@@ -144,7 +144,7 @@ func TestTaskMux_ServeAsynqHandler(t *testing.T) {
 
 	t.Run("serves as asynq handler", func(t *testing.T) {
 		mux := NewTaskMux()
-		handler := &mockHandler{result: nil}
+		handler := &muxTestHandler{result: nil}
 
 		mux.Handle("test:task", handler)
 
@@ -165,9 +165,9 @@ func TestTaskMux_HandlerTypes(t *testing.T) {
 
 	t.Run("returns all registered types", func(t *testing.T) {
 		mux := NewTaskMux()
-		mux.Handle("task1", &mockHandler{})
-		mux.Handle("task2", &mockHandler{})
-		mux.Handle("task3", &mockHandler{})
+		mux.Handle("task1", &muxTestHandler{})
+		mux.Handle("task2", &muxTestHandler{})
+		mux.Handle("task3", &muxTestHandler{})
 
 		types := mux.HandlerTypes()
 		assert.Len(t, types, 3)
@@ -183,7 +183,7 @@ func TestTaskMux_HasHandler(t *testing.T) {
 
 	t.Run("returns true for registered type", func(t *testing.T) {
 		mux := NewTaskMux()
-		mux.Handle("test", &mockHandler{})
+		mux.Handle("test", &muxTestHandler{})
 		assert.True(t, mux.HasHandler("test"))
 	})
 }
@@ -191,7 +191,7 @@ func TestTaskMux_HasHandler(t *testing.T) {
 func TestTaskMux_Unregister(t *testing.T) {
 	t.Run("removes registered handler", func(t *testing.T) {
 		mux := NewTaskMux()
-		mux.Handle("test", &mockHandler{})
+		mux.Handle("test", &muxTestHandler{})
 
 		assert.True(t, mux.HasHandler("test"))
 		assert.True(t, mux.Unregister("test"))
@@ -207,7 +207,7 @@ func TestTaskMux_Unregister(t *testing.T) {
 func TestTaskMux_Concurrent(t *testing.T) {
 	t.Run("concurrent handle calls", func(t *testing.T) {
 		mux := NewTaskMux()
-		handler := &mockHandler{result: nil}
+		handler := &muxTestHandler{result: nil}
 		mux.Handle("test", handler)
 
 		done := make(chan bool, 10)
@@ -228,13 +228,13 @@ func TestTaskMux_Concurrent(t *testing.T) {
 	})
 }
 
-// mockHandler is a test implementation of TaskHandler.
-type mockHandler struct {
+// muxTestHandler is a test implementation of TaskHandler.
+type muxTestHandler struct {
 	called bool
 	result error
 }
 
-func (m *mockHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
+func (m *muxTestHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	m.called = true
 	return m.result
 }

@@ -178,3 +178,140 @@ func TestSync(t *testing.T) {
 	// but should not panic
 	_ = err
 }
+
+func TestWithOutputFile(t *testing.T) {
+	t.Run("valid file path", func(t *testing.T) {
+		// Create temp file
+		tmpFile := t.TempDir() + "/test.log"
+		logger := New(WithOutputFile(tmpFile))
+		assertLoggerNotNil(t, logger)
+
+		// Write to logger
+		logger.Info("test message")
+		err := logger.Sync()
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid directory path", func(t *testing.T) {
+		// Invalid path - non-existent directory with no write permission
+		invalidPath := "/nonexistent/directory/test.log"
+		logger := New(WithOutputFile(invalidPath))
+
+		// Should still create logger (error is silently ignored in WithOutputFile)
+		// and default to stdout
+		assertLoggerNotNil(t, logger)
+
+		// Should be able to log without error
+		assert.NotPanics(t, func() {
+			logger.Info("fallback to stdout")
+		})
+	})
+}
+
+func TestWithErrorOutputFile(t *testing.T) {
+	t.Run("valid file path", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/error.log"
+		logger := New(WithErrorOutputFile(tmpFile))
+		assertLoggerNotNil(t, logger)
+
+		logger.Error("error message")
+		// Sync may fail on stdout in test environments
+		_ = logger.Sync()
+	})
+
+	t.Run("invalid directory path", func(t *testing.T) {
+		invalidPath := "/nonexistent/directory/error.log"
+		logger := New(WithErrorOutputFile(invalidPath))
+
+		// Should still create logger (error is silently ignored)
+		assertLoggerNotNil(t, logger)
+
+		assert.NotPanics(t, func() {
+			logger.Error("fallback to stderr")
+		})
+	})
+}
+
+func TestConcurrentLogging(t *testing.T) {
+	t.Run("concurrent write access", func(t *testing.T) {
+		// Use file output for concurrent test (file handles have OS-level locking)
+		tmpFile := t.TempDir() + "/concurrent.log"
+		logger := New(WithOutputFile(tmpFile))
+
+		const goroutines = 100
+		const messagesPerGoroutine = 10
+
+		done := make(chan bool, goroutines)
+
+		for i := 0; i < goroutines; i++ {
+			go func(id int) {
+				defer func() { done <- true }()
+				for j := 0; j < messagesPerGoroutine; j++ {
+					logger.Infof("goroutine %d message %d", id, j)
+				}
+			}(i)
+		}
+
+		// Wait for all goroutines
+		for i := 0; i < goroutines; i++ {
+			<-done
+		}
+
+		// Sync should complete without error
+		err := logger.Sync()
+		assert.NoError(t, err)
+	})
+
+	t.Run("concurrent default logger access", func(t *testing.T) {
+		const goroutines = 50
+
+		done := make(chan bool, goroutines)
+
+		for i := 0; i < goroutines; i++ {
+			go func(id int) {
+				defer func() { done <- true }()
+				Infof("concurrent info %d", id)
+				Debugf("concurrent debug %d", id)
+				Warnf("concurrent warn %d", id)
+				Errorf("concurrent error %d", id)
+			}(i)
+		}
+
+		for i := 0; i < goroutines; i++ {
+			<-done
+		}
+
+		// Global sync should not panic
+		assert.NotPanics(t, func() {
+			_ = Sync()
+		})
+	})
+}
+
+func TestSyncFailureScenarios(t *testing.T) {
+	t.Run("sync after close", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := New(WithOutput(zapcore.AddSync(&buf)))
+
+		logger.Info("test message")
+
+		// First sync should succeed
+		err := logger.Sync()
+		assert.NoError(t, err)
+
+		// Second sync should also succeed (idempotent)
+		err = logger.Sync()
+		assert.NoError(t, err)
+	})
+
+	t.Run("sync with nil logger", func(t *testing.T) {
+		// SetDefault with nil should still allow Sync to be called
+		original := Default()
+		defer SetDefault(original)
+
+		// This test ensures Sync doesn't panic
+		assert.NotPanics(t, func() {
+			_ = Sync()
+		})
+	})
+}

@@ -17,7 +17,7 @@ func TestJWTMiddleware(t *testing.T) {
 	config := &jwt.MiddlewareConfig{
 		Config: jwt.DefaultConfig(),
 	}
-	config.Config.Secret = "test-secret"
+	config.Secret = "test-secret"
 	config.TokenExtractor = jwt.DefaultTokenExtractor
 	config.ErrorHandler = jwt.DefaultErrorHandler
 	config.SkipPaths = []string{"/health"}
@@ -125,7 +125,7 @@ func TestSkipPathMatching(t *testing.T) {
 			config := &jwt.MiddlewareConfig{
 				Config: jwt.DefaultConfig(),
 			}
-			config.Config.Secret = "test-secret"
+			config.Secret = "test-secret"
 			config.TokenExtractor = jwt.DefaultTokenExtractor
 			config.ErrorHandler = jwt.DefaultErrorHandler
 			config.SkipPaths = tt.skipPaths

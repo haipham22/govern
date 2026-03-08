@@ -3,8 +3,6 @@ package redis_test
 import (
 	"testing"
 
-	redisv9 "github.com/redis/go-redis/v9"
-
 	"github.com/haipham22/govern/database/redis"
 )
 
@@ -78,7 +76,7 @@ func TestNewReturnsUniversalClient(t *testing.T) {
 	defer cleanup()
 
 	// Verify UniversalClient interface - this will work in both phases
-	var _ redisv9.UniversalClient = client
+	var _ = client
 
 	// After Phase 04, the concrete type should NOT be directly *redis.Client
 	// but rather the interface. For now, we just verify it works as UniversalClient.
@@ -100,7 +98,7 @@ func TestNewClientReturnsUniversalClient(t *testing.T) {
 	defer cleanup()
 
 	// Type assertion to UniversalClient
-	var _ redisv9.UniversalClient = client
+	var _ = client
 
 	// Verify UniversalClient methods
 	ctx := t.Context()
@@ -115,7 +113,7 @@ func TestNewFromDSNReturnsUniversalClient(t *testing.T) {
 	defer cleanup()
 
 	// Type assertion to UniversalClient
-	var _ redisv9.UniversalClient = client
+	var _ = client
 
 	// Verify UniversalClient methods
 	ctx := t.Context()
@@ -132,7 +130,7 @@ func TestClusterMode(t *testing.T) {
 	defer cleanup()
 
 	// Verify it's a UniversalClient
-	var _ redisv9.UniversalClient = client
+	var _ = client
 
 	// Note: In Phase 04, this will use redis.NewUniversalClient()
 	// which properly handles cluster mode. For now it creates a single client

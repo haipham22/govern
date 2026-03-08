@@ -155,7 +155,7 @@ func TestContextHelpers_Integration(t *testing.T) {
 	config := &jwt.MiddlewareConfig{
 		Config: jwt.DefaultConfig(),
 	}
-	config.Config.Secret = "test-secret"
+	config.Secret = "test-secret"
 	config.TokenExtractor = jwt.DefaultTokenExtractor
 	config.ErrorHandler = jwt.DefaultErrorHandler
 

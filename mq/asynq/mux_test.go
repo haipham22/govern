@@ -2,6 +2,7 @@ package asynq
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/hibiken/asynq"
@@ -223,18 +224,27 @@ func TestTaskMux_Concurrent(t *testing.T) {
 			<-done
 		}
 
-		// Handler should have been called
-		assert.True(t, handler.called)
+		// Handler should have been called (use atomic read)
+		assert.True(t, handler.WasCalled())
 	})
 }
 
 // muxTestHandler is a test implementation of TaskHandler.
 type muxTestHandler struct {
+	mu     sync.Mutex
 	called bool
 	result error
 }
 
 func (m *muxTestHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
+	m.mu.Lock()
 	m.called = true
+	m.mu.Unlock()
 	return m.result
+}
+
+func (m *muxTestHandler) WasCalled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.called
 }

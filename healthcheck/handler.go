@@ -1,7 +1,6 @@
 package healthcheck
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 )
@@ -15,7 +14,7 @@ func (r *Registry) Handler() http.Handler {
 
 		// Use context to ensure compiler sees the import as used
 		_ = ctx
-		var _ context.Context = ctx
+		var _ = ctx
 
 		if name := req.URL.Query().Get("name"); name != "" {
 			r.mu.RLock()

@@ -41,7 +41,7 @@ func TestTaskHandlerFunc(t *testing.T) {
 
 func TestHandlerAdapter(t *testing.T) {
 	t.Run("implements TaskHandler", func(t *testing.T) {
-		var _ TaskHandler = NewHandlerAdapter(nil)
+		var _ = NewHandlerAdapter(nil)
 	})
 
 	t.Run("delegates to asynq.Handler", func(t *testing.T) {

@@ -1,0 +1,473 @@
+package asynq
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+)
+
+// mockRedisClient creates a mock redis client for testing
+// Returns nil if Redis is not available.
+func mockRedisClient(t *testing.T) redis.UniversalClient {
+	// Use a test Redis instance or miniredis
+	// For now, we'll create a real client pointing to localhost
+	// In CI, this should use a test container or mock
+	client := redis.NewClient(&redis.Options{
+		Addr:         "localhost:6379",
+		DB:           15, // Use test DB
+		DialTimeout:  100 * time.Millisecond,
+		ReadTimeout:  100 * time.Millisecond,
+		WriteTimeout: 100 * time.Millisecond,
+	})
+
+	// Test connection
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		client.Close()
+		t.Skip("Redis not available, skipping integration tests")
+		return nil
+	}
+
+	return client
+}
+
+func TestNewClient(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	client := mockRedisClient(t)
+	defer client.Close()
+
+	asynqClient, cleanup, err := NewClient(client)
+	require.NoError(t, err)
+	require.NotNil(t, asynqClient)
+	require.NotNil(t, cleanup)
+	defer cleanup()
+
+	assert.NotNil(t, asynqClient.client)
+	assert.NotNil(t, asynqClient.config)
+}
+
+func TestNewClientWithOptions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	client := mockRedisClient(t)
+	defer client.Close()
+
+	asynqClient, cleanup, err := NewClient(client,
+		WithClientMaxRetry(10),
+		WithClientTimeout(5*time.Minute),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, asynqClient)
+	defer cleanup()
+
+	assert.Equal(t, 10, asynqClient.config.MaxRetry)
+	assert.Equal(t, 5*time.Minute, asynqClient.config.Timeout)
+}
+
+func TestNewTask(t *testing.T) {
+	tests := []struct {
+		name    string
+		typ     string
+		payload interface{}
+		wantErr bool
+	}{
+		{
+			name:    "valid task with payload",
+			typ:     "email:send",
+			payload: map[string]interface{}{"user_id": 42},
+			wantErr: false,
+		},
+		{
+			name:    "valid task with nil payload",
+			typ:     "email:send",
+			payload: nil,
+			wantErr: false,
+		},
+		{
+			name:    "valid task with struct payload",
+			typ:     "email:send",
+			payload: struct{ UserID int }{UserID: 42},
+			wantErr: false,
+		},
+		{
+			name:    "invalid payload (channel)",
+			typ:     "email:send",
+			payload: make(chan int),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task, err := NewTask(tt.typ, tt.payload)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, task)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, task)
+				assert.Equal(t, tt.typ, task.Type())
+
+				if tt.payload != nil {
+					var payload map[string]interface{}
+					err := json.Unmarshal(task.Payload(), &payload)
+					assert.NoError(t, err)
+				}
+			}
+		})
+	}
+}
+
+func TestEnqueue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	defer redisClient.Close()
+
+	// Flush test DB before test
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("enqueue valid task", func(t *testing.T) {
+		task, err := NewTask("test:enqueue", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		info, err := client.Enqueue(ctx, task)
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+		assert.NotEmpty(t, info.Queue)
+	})
+
+	t.Run("enqueue with options", func(t *testing.T) {
+		task, err := NewTask("test:enqueue:opts", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		info, err := client.Enqueue(ctx, task,
+			WithQueue("high"),
+			WithMaxRetry(5),
+			WithEnqueueTimeout(10*time.Minute),
+		)
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+		assert.Equal(t, "high", info.Queue)
+	})
+
+	t.Run("enqueue nil task", func(t *testing.T) {
+		info, err := client.Enqueue(ctx, nil)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "task cannot be nil")
+	})
+}
+
+func TestEnqueueIn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("enqueue in future", func(t *testing.T) {
+		task, err := NewTask("test:enqueue:in", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		info, err := client.EnqueueIn(ctx, task, 1*time.Hour)
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+	})
+
+	t.Run("enqueue nil task", func(t *testing.T) {
+		info, err := client.EnqueueIn(ctx, nil, 1*time.Hour)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "task cannot be nil")
+	})
+
+	t.Run("enqueue with negative duration", func(t *testing.T) {
+		task, err := NewTask("test:enqueue:negative", map[string]string{})
+		require.NoError(t, err)
+
+		info, err := client.EnqueueIn(ctx, task, -1*time.Hour)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "cannot be negative")
+	})
+}
+
+func TestEnqueueAt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("enqueue at future time", func(t *testing.T) {
+		task, err := NewTask("test:enqueue:at", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		futureTime := time.Now().Add(1 * time.Hour)
+		info, err := client.EnqueueAt(ctx, task, futureTime)
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+	})
+
+	t.Run("enqueue nil task", func(t *testing.T) {
+		info, err := client.EnqueueAt(ctx, nil, time.Now().Add(1*time.Hour))
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "task cannot be nil")
+	})
+
+	t.Run("enqueue at past time", func(t *testing.T) {
+		task, err := NewTask("test:enqueue:past", map[string]string{})
+		require.NoError(t, err)
+
+		pastTime := time.Now().Add(-1 * time.Hour)
+		info, err := client.EnqueueAt(ctx, task, pastTime)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "must be in the future")
+	})
+}
+
+func TestClient_Close(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	if redisClient == nil {
+		return
+	}
+	defer redisClient.Close()
+
+	_, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+
+	// Close via cleanup function (no return value)
+	cleanup()
+
+	// Client should be closed now
+	// asynq.Client.Close() may return error on double close, which is expected
+}
+
+func TestAsynqRedisClientOpt(t *testing.T) {
+	t.Run("single node client", func(t *testing.T) {
+		client := redis.NewClient(&redis.Options{
+			Addr:     "localhost:6379",
+			Password: "password",
+			DB:       1,
+			PoolSize: 50,
+		})
+
+		opt := asynqRedisClientOpt(client)
+		assert.Equal(t, "localhost:6379", opt.Addr)
+		assert.Equal(t, "password", opt.Password)
+		assert.Equal(t, 1, opt.DB)
+		assert.Equal(t, 50, opt.PoolSize)
+	})
+
+	t.Run("cluster client", func(t *testing.T) {
+		client := redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:    []string{"localhost:7000", "localhost:7001"},
+			Password: "password",
+			PoolSize: 100,
+		})
+
+		opt := asynqRedisClientOpt(client)
+		// Cluster uses first addr as fallback for asynq
+		assert.Equal(t, "localhost:7000", opt.Addr)
+		assert.Equal(t, "password", opt.Password)
+		assert.Equal(t, 100, opt.PoolSize)
+	})
+}
+
+// Test client method validation logic without Redis
+func TestClientValidation(t *testing.T) {
+	// Create a mock client that will fail before calling Redis
+	t.Run("enqueue nil task validation", func(t *testing.T) {
+		mockClient := &Client{
+			client: nil, // Intentionally nil for validation test
+			logger: zap.NewNop().Sugar(),
+			config: defaultClientConfig(),
+		}
+
+		info, err := mockClient.Enqueue(context.Background(), nil)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "task cannot be nil")
+	})
+
+	t.Run("enqueueIn nil task validation", func(t *testing.T) {
+		mockClient := &Client{
+			client: nil,
+			logger: zap.NewNop().Sugar(),
+			config: defaultClientConfig(),
+		}
+
+		info, err := mockClient.EnqueueIn(context.Background(), nil, 1*time.Hour)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "task cannot be nil")
+	})
+
+	t.Run("enqueueIn negative duration validation", func(t *testing.T) {
+		mockClient := &Client{
+			client: nil,
+			logger: zap.NewNop().Sugar(),
+			config: defaultClientConfig(),
+		}
+
+		task, _ := NewTask("test", nil)
+		info, err := mockClient.EnqueueIn(context.Background(), task, -1*time.Hour)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "cannot be negative")
+	})
+
+	t.Run("enqueueAt nil task validation", func(t *testing.T) {
+		mockClient := &Client{
+			client: nil,
+			logger: zap.NewNop().Sugar(),
+			config: defaultClientConfig(),
+		}
+
+		info, err := mockClient.EnqueueAt(context.Background(), nil, time.Now().Add(1*time.Hour))
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "task cannot be nil")
+	})
+
+	t.Run("enqueueAt past time validation", func(t *testing.T) {
+		mockClient := &Client{
+			client: nil,
+			logger: zap.NewNop().Sugar(),
+			config: defaultClientConfig(),
+		}
+
+		task, _ := NewTask("test", nil)
+		pastTime := time.Now().Add(-1 * time.Hour)
+		info, err := mockClient.EnqueueAt(context.Background(), task, pastTime)
+		assert.Error(t, err)
+		assert.Nil(t, info)
+		assert.Contains(t, err.Error(), "must be in the future")
+	})
+}
+
+func TestEnqueueWithDeadline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("enqueue with deadline", func(t *testing.T) {
+		task, err := NewTask("test:deadline", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		deadline := time.Now().Add(2 * time.Hour)
+		info, err := client.Enqueue(ctx, task, WithDeadline(deadline))
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+	})
+}
+
+func TestEnqueueWithUnique(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("enqueue with unique", func(t *testing.T) {
+		taskType := "test:unique:" + uuid.New().String()
+		task, err := NewTask(taskType, map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		// First enqueue should succeed
+		info1, err := client.Enqueue(ctx, task, WithUnique(1*time.Hour))
+		require.NoError(t, err)
+		assert.NotEmpty(t, info1.ID)
+
+		// Second enqueue with same type and payload should be ignored
+		info2, err := client.Enqueue(ctx, task, WithUnique(1*time.Hour))
+		require.NoError(t, err)
+		// asynq returns existing task info for duplicate unique tasks
+		assert.NotEmpty(t, info2.ID)
+	})
+}
+
+// Benchmark Enqueue
+func BenchmarkEnqueue(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping benchmark in short mode")
+	}
+
+	redisClient := mockRedisClient(&testing.T{})
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(b, err)
+	defer cleanup()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		task, _ := NewTask("bench:enqueue", map[string]int{"i": i})
+		_, _ = client.Enqueue(ctx, task)
+	}
+}

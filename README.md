@@ -24,6 +24,7 @@ go get github.com/haipham22/govern
 | [`database/postgres`](./database/postgres/) | PostgreSQL connection management with GORM                   |
 | [`database/redis`](./database/redis/)       | Redis connection management with connection pooling          |
 | [`cron`](./cron/)                           | Cron scheduler with gocron v2, graceful lifecycle (Phase 1: Handler & Session complete) |
+| [`mq/asynq`](./mq/asynq/)                    | Asynq integration with Redis message queue (Phase 2: Client implementation complete) |
 | [`errors`](./errors/)                       | Structured error handling with error codes                   |
 | [`log`](./log/)                             | Zap-based structured logging                                 |
 | [`metrics`](./metrics/)                     | Prometheus metrics with HTTP middleware                      |
@@ -53,6 +54,7 @@ See [QUICKSTART.md](./QUICKSTART.md) for installation and usage examples.
 - [x] JWT authentication
 - [x] UniversalClient interface tests
 - [x] Cron scheduler Phase 1 (Handler & Session interfaces)
+- [x] Asynq integration Phase 2 (Client implementation)
 - [ ] Circuit breaker pattern
 - [ ] Additional framework integrations (gin, fiber)
 

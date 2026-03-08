@@ -1,6 +1,8 @@
 # golangci-lint configuration
 # https://golangci-lint.run/usage/configuration/
 
+version: 2
+
 run:
   # Timeout for analysis
   timeout: 5m
@@ -17,26 +19,19 @@ output:
   sort-results: true
 
 linters:
-  # Start with disabled linters
-  disable-all: true
-
   # Enable specific linters
   # https://golangci-lint.run/usage/linters/
   enable:
-    # Bugs
+    # Bugs (enabled by default)
     - errcheck          # Check for unchecked errors
-    - gosimple          # Simplify code
     - govet             # Standard go vet
     - ineffassign       # Detect ineffectual assignments
     - staticcheck       # Static analysis
-    - typecheck         # Standard Go type checker
     - unused            # Check for unused code
 
     # Style
     - gocritic          # Provides diagnostics for bugs, performance and style
-    - gofmt             # Standard gofmt
     - misspell          # Find commonly misspelled English words
-    - goimports         # Standard goimports (also fixes import order)
 
     # Complexity
     - gocyclo           # Compute cyclomatic complexities
@@ -78,10 +73,6 @@ linters-settings:
       - opinionated
       - performance
       - style
-
-  goimports:
-    # Local import prefixes
-    local-prefixes: github.com/haipham22/govern
 
   staticcheck:
     # Run all checks

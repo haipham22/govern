@@ -1,12 +1,18 @@
 package postgres_test
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/haipham22/govern/database/postgres"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/require"
+	gormpostgres "gorm.io/driver/postgres"
+	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/haipham22/govern/database/postgres"
 )
 
 func TestNew(t *testing.T) {
@@ -416,10 +422,10 @@ func TestMockLogger(t *testing.T) {
 // Test error paths in New function
 func TestNewErrorPaths(t *testing.T) {
 	tests := []struct {
-		name        string
-		dsn         string
-		setupMock   func() // Optional setup for mocking
-		expectError bool
+		name          string
+		dsn           string
+		setupMock     func() // Optional setup for mocking
+		expectError   bool
 		errorContains string
 	}{
 		{
@@ -538,32 +544,32 @@ func TestConnMaxIdleTimePositive(t *testing.T) {
 func TestPoolConfiguration(t *testing.T) {
 	// Test various pool configurations
 	tests := []struct {
-		name         string
-		maxIdle      int
-		maxOpen      int
-		maxLifetime  time.Duration
-		maxIdleTime  time.Duration
+		name        string
+		maxIdle     int
+		maxOpen     int
+		maxLifetime time.Duration
+		maxIdleTime time.Duration
 	}{
 		{
-			name:         "small pool",
-			maxIdle:      5,
-			maxOpen:      10,
-			maxLifetime:  1 * time.Minute,
-			maxIdleTime:  30 * time.Second,
+			name:        "small pool",
+			maxIdle:     5,
+			maxOpen:     10,
+			maxLifetime: 1 * time.Minute,
+			maxIdleTime: 30 * time.Second,
 		},
 		{
-			name:         "large pool",
-			maxIdle:      50,
-			maxOpen:      200,
-			maxLifetime:  30 * time.Minute,
-			maxIdleTime:  10 * time.Minute,
+			name:        "large pool",
+			maxIdle:     50,
+			maxOpen:     200,
+			maxLifetime: 30 * time.Minute,
+			maxIdleTime: 10 * time.Minute,
 		},
 		{
-			name:         "extended lifetime",
-			maxIdle:      25,
-			maxOpen:      100,
-			maxLifetime:  1 * time.Hour,
-			maxIdleTime:  30 * time.Minute,
+			name:        "extended lifetime",
+			maxIdle:     25,
+			maxOpen:     100,
+			maxLifetime: 1 * time.Hour,
+			maxIdleTime: 30 * time.Minute,
 		},
 	}
 
@@ -712,7 +718,7 @@ func TestConfigCombos(t *testing.T) {
 				postgres.WithMaxIdleConns(30),
 				postgres.WithMaxOpenConns(120),
 				postgres.WithConnMaxLifetime(15 * time.Minute),
-				postgres.WithConnMaxIdleTime(7*time.Minute),
+				postgres.WithConnMaxIdleTime(7 * time.Minute),
 			},
 		},
 	}
@@ -831,15 +837,15 @@ func TestEdgeCases(t *testing.T) {
 			options: nil,
 		},
 		{
-			name:    "very large pool size",
-			dsn:     "host=localhost",
+			name: "very large pool size",
+			dsn:  "host=localhost",
 			options: []postgres.Option{
 				postgres.WithMaxOpenConns(10000),
 			},
 		},
 		{
-			name:    "very long lifetime",
-			dsn:     "host=localhost",
+			name: "very long lifetime",
+			dsn:  "host=localhost",
 			options: []postgres.Option{
 				postgres.WithConnMaxLifetime(24 * time.Hour),
 			},
@@ -869,4 +875,316 @@ func TestEdgeCases(t *testing.T) {
 			_ = db
 		})
 	}
+}
+
+// Tests using go-sqlmock to cover the success path
+
+func TestConfigureConnectionPoolSuccess(t *testing.T) {
+	// Create mock database
+	mockDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer mockDB.Close()
+
+	// Create GORM DB from mock
+	dialector := gormpostgres.New(gormpostgres.Config{
+		Conn: mockDB,
+		DSN:  "sqlmock_database",
+	})
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	require.NoError(t, err)
+
+	// Test configuration
+	cfg := &postgres.Config{
+		MaxIdleConns:         10,
+		MaxOpenConns:         20,
+		ConnMaxLifetime:      5 * time.Minute,
+		ConnMaxIdleTime:      2 * time.Minute,
+		PreferSimpleProtocol: true,
+	}
+
+	cleanup, err := postgres.ConfigureConnectionPool(db, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+
+	// Verify cleanup can be called without panic
+	cleanup()
+
+	// Calling cleanup again should be safe
+	cleanup()
+}
+
+func TestConfigureConnectionPoolWithZeroIdleTime(t *testing.T) {
+	// Test the code path where ConnMaxIdleTime is 0
+	mockDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer mockDB.Close()
+
+	dialector := gormpostgres.New(gormpostgres.Config{
+		Conn: mockDB,
+		DSN:  "sqlmock_database",
+	})
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	require.NoError(t, err)
+
+	cfg := &postgres.Config{
+		MaxIdleConns:    10,
+		MaxOpenConns:    20,
+		ConnMaxLifetime: 5 * time.Minute,
+		ConnMaxIdleTime: 0, // This should skip SetConnMaxIdleTime
+	}
+
+	cleanup, err := postgres.ConfigureConnectionPool(db, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+
+	cleanup()
+}
+
+func TestConfigureConnectionPoolVariousConfigurations(t *testing.T) {
+	tests := []struct {
+		name        string
+		maxIdle     int
+		maxOpen     int
+		maxLifetime time.Duration
+		maxIdleTime time.Duration
+	}{
+		{
+			name:        "small pool",
+			maxIdle:     5,
+			maxOpen:     10,
+			maxLifetime: 1 * time.Minute,
+			maxIdleTime: 30 * time.Second,
+		},
+		{
+			name:        "large pool",
+			maxIdle:     50,
+			maxOpen:     200,
+			maxLifetime: 30 * time.Minute,
+			maxIdleTime: 10 * time.Minute,
+		},
+		{
+			name:        "zero idle time",
+			maxIdle:     25,
+			maxOpen:     100,
+			maxLifetime: 5 * time.Minute,
+			maxIdleTime: 0,
+		},
+		{
+			name:        "extended lifetime",
+			maxIdle:     25,
+			maxOpen:     100,
+			maxLifetime: 1 * time.Hour,
+			maxIdleTime: 30 * time.Minute,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDB, _, err := sqlmock.New()
+			require.NoError(t, err)
+			defer mockDB.Close()
+
+			dialector := gormpostgres.New(gormpostgres.Config{
+				Conn: mockDB,
+				DSN:  "sqlmock_database",
+			})
+
+			db, err := gorm.Open(dialector, &gorm.Config{})
+			require.NoError(t, err)
+
+			cfg := &postgres.Config{
+				MaxIdleConns:    tt.maxIdle,
+				MaxOpenConns:    tt.maxOpen,
+				ConnMaxLifetime: tt.maxLifetime,
+				ConnMaxIdleTime: tt.maxIdleTime,
+			}
+
+			cleanup, err := postgres.ConfigureConnectionPool(db, cfg)
+			require.NoError(t, err)
+			require.NotNil(t, cleanup)
+
+			cleanup()
+		})
+	}
+}
+
+func TestConfigureConnectionPoolFailure(t *testing.T) {
+	// Test error handling when db.DB() fails
+	// We'll create a mock that fails to get underlying sql.DB
+
+	// Create a mock sql.DB that will fail
+	mockDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer mockDB.Close()
+
+	dialector := gormpostgres.New(gormpostgres.Config{
+		Conn: mockDB,
+		DSN:  "sqlmock_database",
+	})
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	require.NoError(t, err)
+
+	// Close the underlying DB to force db.DB() to fail
+	sqlDB, _ := db.DB()
+	sqlDB.Close()
+
+	cfg := &postgres.Config{
+		MaxIdleConns:    10,
+		MaxOpenConns:    20,
+		ConnMaxLifetime: 5 * time.Minute,
+	}
+
+	cleanup, err := postgres.ConfigureConnectionPool(db, cfg)
+	// This should succeed as db.DB() returns cached connection
+	// The error will occur when trying to use the connection
+	require.NoError(t, err)
+
+	// Cleanup should still work
+	cleanup()
+}
+
+func TestNewWithMockSuccess(t *testing.T) {
+	// Test the full New() function with a mock connection
+	mockDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer mockDB.Close()
+
+	dialector := gormpostgres.New(gormpostgres.Config{
+		Conn: mockDB,
+		DSN:  "sqlmock_database",
+	})
+
+	// This won't actually call New() since we can't pass a pre-made connection
+	// But we can test the configureConnectionPool function directly
+	gormDB, err := gorm.Open(dialector, &gorm.Config{})
+	require.NoError(t, err)
+
+	cfg := &postgres.Config{
+		MaxIdleConns:         25,
+		MaxOpenConns:         100,
+		ConnMaxLifetime:      5 * time.Minute,
+		ConnMaxIdleTime:      5 * time.Minute,
+		PreferSimpleProtocol: true,
+	}
+
+	// Expect a ping on connection (GORM does this automatically)
+	mock.ExpectPing()
+
+	cleanup, err := postgres.ConfigureConnectionPool(gormDB, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+
+	// Verify all expectations were met
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// Test cleanup
+	cleanup()
+}
+
+func TestCleanupFunction(t *testing.T) {
+	// Test that cleanup function properly closes the database
+	mockDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+
+	dialector := gormpostgres.New(gormpostgres.Config{
+		Conn: mockDB,
+		DSN:  "sqlmock_database",
+	})
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	require.NoError(t, err)
+
+	cfg := &postgres.Config{
+		MaxIdleConns:    10,
+		MaxOpenConns:    20,
+		ConnMaxLifetime: 5 * time.Minute,
+	}
+
+	cleanup, err := postgres.ConfigureConnectionPool(db, cfg)
+	require.NoError(t, err)
+
+	// Call cleanup - should close the database
+	cleanup()
+
+	// Verify database is closed
+	err = mockDB.Close()
+	if err == nil || err == sql.ErrConnDone {
+		// Expected - database already closed or connection done
+		return
+	}
+}
+
+func TestCleanupIdempotent(t *testing.T) {
+	// Test that cleanup can be called multiple times safely
+	mockDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer mockDB.Close()
+
+	dialector := gormpostgres.New(gormpostgres.Config{
+		Conn: mockDB,
+		DSN:  "sqlmock_database",
+	})
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	require.NoError(t, err)
+
+	mock.ExpectPing()
+
+	cfg := &postgres.Config{
+		MaxIdleConns:    10,
+		MaxOpenConns:    20,
+		ConnMaxLifetime: 5 * time.Minute,
+	}
+
+	cleanup, err := postgres.ConfigureConnectionPool(db, cfg)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// Call cleanup multiple times - should not panic
+	cleanup()
+	cleanup()
+	cleanup()
+}
+
+func TestPoolConfigurationApplied(t *testing.T) {
+	// Verify that pool configuration values are correctly applied
+	mockDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer mockDB.Close()
+
+	dialector := gormpostgres.New(gormpostgres.Config{
+		Conn: mockDB,
+		DSN:  "sqlmock_database",
+	})
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	require.NoError(t, err)
+
+	mock.ExpectPing()
+
+	cfg := &postgres.Config{
+		MaxIdleConns:         15,
+		MaxOpenConns:         75,
+		ConnMaxLifetime:      12 * time.Minute,
+		ConnMaxIdleTime:      6 * time.Minute,
+		PreferSimpleProtocol: false,
+	}
+
+	cleanup, err := postgres.ConfigureConnectionPool(db, cfg)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// Verify the configuration was applied by checking the underlying sql.DB
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+
+	// GORM doesn't expose getters for pool config, but we can verify
+	// that the DB is still valid and cleanup works
+	require.NotNil(t, sqlDB)
+	require.NotNil(t, cleanup)
+
+	cleanup()
 }

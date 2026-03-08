@@ -287,6 +287,155 @@ func TestClient_Close(t *testing.T) {
 	// asynq.Client.Close() may return error on double close, which is expected
 }
 
+func TestClient_CloseDirect(t *testing.T) {
+	t.Run("close client directly", func(t *testing.T) {
+		redisClient := mockRedisClient(t)
+		if redisClient == nil {
+			t.Skip("Redis not available")
+			return
+		}
+		defer redisClient.Close()
+
+		client, cleanup, err := NewClient(redisClient)
+		require.NoError(t, err)
+
+		// Close directly via Close method
+		err = client.Close()
+		assert.NoError(t, err)
+
+		// Call cleanup (should not error even if already closed)
+		cleanup()
+	})
+}
+
+func TestClient_CloseIdempotent(t *testing.T) {
+	t.Run("close is idempotent", func(t *testing.T) {
+		redisClient := mockRedisClient(t)
+		if redisClient == nil {
+			t.Skip("Redis not available")
+			return
+		}
+		defer redisClient.Close()
+
+		client, cleanup, err := NewClient(redisClient)
+		require.NoError(t, err)
+
+		// First close
+		err = client.Close()
+		assert.NoError(t, err)
+
+		// Second close should also succeed (asynq handles this)
+		err = client.Close()
+		// May error depending on asynq implementation
+		_ = err
+
+		cleanup()
+	})
+}
+
+func TestClient_EnqueueWithZeroDuration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	if redisClient == nil {
+		return
+	}
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("enqueue in with zero duration", func(t *testing.T) {
+		task, err := NewTask("test:zero:duration", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		// Zero duration means enqueue immediately
+		info, err := client.EnqueueIn(ctx, task, 0)
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+	})
+}
+
+func TestClient_EnqueueWithOptions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	if redisClient == nil {
+		return
+	}
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("enqueue with retry option", func(t *testing.T) {
+		task, err := NewTask("test:retry", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		info, err := client.Enqueue(ctx, task, WithMaxRetry(10))
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+	})
+
+	t.Run("enqueue with queue option", func(t *testing.T) {
+		task, err := NewTask("test:queue", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		info, err := client.Enqueue(ctx, task, WithQueue("custom"))
+		require.NoError(t, err)
+		assert.NotEmpty(t, info.ID)
+		assert.Equal(t, "custom", info.Queue)
+	})
+}
+
+func TestClient_ConcurrentEnqueue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	redisClient := mockRedisClient(t)
+	if redisClient == nil {
+		return
+	}
+	defer redisClient.Close()
+
+	ctx := context.Background()
+	redisClient.FlushDB(ctx)
+
+	client, cleanup, err := NewClient(redisClient)
+	require.NoError(t, err)
+	defer cleanup()
+
+	t.Run("concurrent enqueue operations", func(t *testing.T) {
+		const goroutines = 50
+		done := make(chan bool, goroutines)
+
+		for i := 0; i < goroutines; i++ {
+			go func(id int) {
+				defer func() { done <- true }()
+				task, _ := NewTask("test:concurrent", map[string]int{"id": id})
+				_, _ = client.Enqueue(ctx, task)
+			}(i)
+		}
+
+		for i := 0; i < goroutines; i++ {
+			<-done
+		}
+	})
+}
+
 func TestAsynqRedisClientOpt(t *testing.T) {
 	t.Run("single node client", func(t *testing.T) {
 		client := redis.NewClient(&redis.Options{

@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// contextKey is a custom type for context keys to prevent collisions.
+type contextKey string
+
 // TestHandler implementation for testing
 type TestHandler struct {
 	setupCalled   bool
@@ -76,9 +79,9 @@ func TestJobHandlerFunc(t *testing.T) {
 	})
 
 	t.Run("Execute passes session context to function", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), "key", "value")
+		ctx := context.WithValue(context.Background(), contextKey("key"), "value")
 		handler := JobHandlerFunc(func(ctx context.Context) error {
-			assert.Equal(t, "value", ctx.Value("key"))
+			assert.Equal(t, "value", ctx.Value(contextKey("key")))
 			return nil
 		})
 		session := NewSchedulerSession(ctx, "test", "job1", time.Time{}, time.Now())

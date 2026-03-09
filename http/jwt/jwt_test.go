@@ -1158,7 +1158,7 @@ func TestMiddleware(t *testing.T) {
 			// Create handler that writes response
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.HasPrefix(r.URL.Path, "/public") {
-					w.Write([]byte("public"))
+					_, _ = w.Write([]byte("public"))
 					return
 				}
 
@@ -1169,9 +1169,9 @@ func TestMiddleware(t *testing.T) {
 				}
 
 				if claims.UserID == "user123" {
-					w.Write([]byte("protected with user: " + claims.UserID))
+					_, _ = w.Write([]byte("protected with user: " + claims.UserID))
 				} else {
-					w.Write([]byte("protected"))
+					_, _ = w.Write([]byte("protected"))
 				}
 			})
 

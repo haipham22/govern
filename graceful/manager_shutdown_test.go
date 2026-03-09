@@ -8,7 +8,7 @@ import (
 )
 
 func TestManagerGoWithError(t *testing.T) {
-	m := NewManager(nil, WithFailFast(true))
+	m := NewManager(context.TODO(), WithFailFast(true))
 	testErr := errors.New("test error")
 
 	started := make(chan struct{})
@@ -28,7 +28,7 @@ func TestManagerGoWithError(t *testing.T) {
 }
 
 func TestManagerShutdown(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	m.Go(func(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
@@ -44,7 +44,7 @@ func TestManagerShutdown(t *testing.T) {
 }
 
 func TestManagerShutdownWithTimeout(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	m.Go(func(ctx context.Context) error {
 		<-ctx.Done()
 		time.Sleep(100 * time.Millisecond)
@@ -61,7 +61,7 @@ func TestManagerShutdownWithTimeout(t *testing.T) {
 }
 
 func TestManagerShutdownTimeoutExceeded(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	block := make(chan struct{})
 
 	m.Go(func(ctx context.Context) error {
@@ -81,7 +81,7 @@ func TestManagerShutdownTimeoutExceeded(t *testing.T) {
 }
 
 func TestManagerCleanupError(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	testErr := errors.New("cleanup error")
 
 	m.Defer(func(ctx context.Context) error {

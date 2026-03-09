@@ -12,7 +12,7 @@ func TestHTTPMiddleware(t *testing.T) {
 	reg := New()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("hello"))
+		_, _ = w.Write([]byte("hello"))
 	})
 
 	wrapped := HTTPMiddlewareWithRegistry(reg, handler, "service")
@@ -31,7 +31,7 @@ func TestHTTPMiddlewareSuccess(t *testing.T) {
 	reg := New()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	wrapped := HTTPMiddlewareWithRegistry(reg, handler, "service")
@@ -96,7 +96,7 @@ func TestHTTPMiddlewareStatusText(t *testing.T) {
 	reg := New()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
-		w.Write([]byte("I'm a teapot"))
+		_, _ = w.Write([]byte("I'm a teapot"))
 	})
 
 	wrapped := HTTPMiddlewareWithRegistry(reg, handler)
@@ -130,7 +130,7 @@ func TestHTTPMiddlewareCustomLabels(t *testing.T) {
 	reg := New()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	wrapped := HTTPMiddlewareWithRegistry(reg, handler, "service", "version")

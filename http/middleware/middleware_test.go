@@ -78,7 +78,7 @@ func assertHeader(t *testing.T, rec *httptest.ResponseRecorder, key, value strin
 func TestLogging(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("response"))
+		_, _ = w.Write([]byte("response"))
 	})
 
 	tests := []struct {
@@ -189,7 +189,7 @@ func TestLogging_ResponseWriter(t *testing.T) {
 		{
 			name: "tracks bytes written",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("hello world"))
+				_, _ = w.Write([]byte("hello world"))
 			},
 			expectedBytes: 11,
 			validateBytesWritten: func(t *testing.T, logs []map[string]interface{}) {
@@ -204,9 +204,9 @@ func TestLogging_ResponseWriter(t *testing.T) {
 		{
 			name: "handles multiple writes",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("first"))
-				w.Write([]byte(" "))
-				w.Write([]byte("second"))
+				_, _ = w.Write([]byte("first"))
+				_, _ = w.Write([]byte(" "))
+				_, _ = w.Write([]byte("second"))
 			},
 			expectedBytes: 12,
 		},
@@ -303,7 +303,7 @@ func TestResponseWriter_WriteHeader(t *testing.T) {
 		{
 			name: "default status when WriteHeader not called",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("data"))
+				_, _ = w.Write([]byte("data"))
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -376,7 +376,7 @@ func TestRecovery(t *testing.T) {
 			name: "normal requests pass through",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("ok"))
+				_, _ = w.Write([]byte("ok"))
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   "ok",
@@ -841,7 +841,7 @@ func TestMiddlewareChain(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls = append(calls, "handler")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	// Chain: requestID -> logging -> recovery -> handler
@@ -902,7 +902,7 @@ func TestSecurityScenarios(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			go func() {
 				defer func() {
-					recover() // Prevent test crash
+					_ = recover() // Prevent test crash
 				}()
 				panic("goroutine panic") // This won't be caught by middleware
 			}()
@@ -947,7 +947,7 @@ func TestResponseWriter_EdgeCases(t *testing.T) {
 
 	t.Run("write before write header", func(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("early write"))
+			_, _ = w.Write([]byte("early write"))
 		})
 
 		rec := httptest.NewRecorder()
@@ -973,7 +973,7 @@ func TestResponseWriter_EdgeCases(t *testing.T) {
 
 	t.Run("empty write", func(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte{})
+			_, _ = w.Write([]byte{})
 		})
 
 		rec := httptest.NewRecorder()

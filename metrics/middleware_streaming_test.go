@@ -15,7 +15,7 @@ func TestHTTPMiddlewareStreaming(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 3; i++ {
-			w.Write([]byte("chunk"))
+			_, _ = w.Write([]byte("chunk"))
 		}
 	})
 
@@ -34,7 +34,7 @@ func TestHTTPMiddlewareWriteString(t *testing.T) {
 	reg := New()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "hello via io.WriteString")
+		_, _ = io.WriteString(w, "hello via io.WriteString")
 	})
 
 	wrapped := HTTPMiddlewareWithRegistry(reg, handler)
@@ -68,9 +68,9 @@ func TestHTTPMiddlewareNoWrite(t *testing.T) {
 func TestMiddlewareRecordsMultipleWrites(t *testing.T) {
 	reg := New()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(strings.Repeat("a", 1000)))
-		w.Write([]byte(strings.Repeat("b", 2000)))
-		w.Write([]byte(strings.Repeat("c", 3000)))
+		_, _ = w.Write([]byte(strings.Repeat("a", 1000)))
+		_, _ = w.Write([]byte(strings.Repeat("b", 2000)))
+		_, _ = w.Write([]byte(strings.Repeat("c", 3000)))
 	})
 
 	wrapped := HTTPMiddlewareWithRegistry(reg, handler)

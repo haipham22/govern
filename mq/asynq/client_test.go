@@ -23,7 +23,7 @@ func miniredisClient(t *testing.T) redis.UniversalClient {
 	})
 
 	t.Cleanup(func() {
-		client.Close()
+		_ = client.Close()
 	})
 
 	return client

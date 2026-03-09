@@ -24,7 +24,7 @@ postgres:
   user: "dbuser"
 `
 	_ = os.WriteFile(yamlPath, []byte(yamlContent), 0o600)
-	defer os.Remove(yamlPath)
+	defer func() { _ = os.Remove(yamlPath) }()
 
 	// Define your config structure
 	type Config struct {
@@ -64,10 +64,10 @@ postgres:
 // Example_envOverride demonstrates ENV variable override.
 func Example_envOverride() {
 	// Set ENV variables to override YAML values
-	os.Setenv("SERVER_PORT", "9090")
-	os.Setenv("POSTGRES_HOST", "prod.db.local")
-	defer os.Unsetenv("SERVER_PORT")
-	defer os.Unsetenv("POSTGRES_HOST")
+	_ = os.Setenv("SERVER_PORT", "9090")
+	_ = os.Setenv("POSTGRES_HOST", "prod.db.local")
+	defer func() { _ = os.Unsetenv("SERVER_PORT") }()
+	defer func() { _ = os.Unsetenv("POSTGRES_HOST") }()
 
 	// Create a temporary config file
 	tmpDir := os.TempDir()
@@ -81,7 +81,7 @@ postgres:
   port: 5432
 `
 	_ = os.WriteFile(yamlPath, []byte(yamlContent), 0o600)
-	defer os.Remove(yamlPath)
+	defer func() { _ = os.Remove(yamlPath) }()
 
 	type Config struct {
 		Server struct {
@@ -113,8 +113,8 @@ postgres:
 // Example_withENVPrefix demonstrates using ENV prefix.
 func Example_withENVPrefix() {
 	// Set ENV variables with prefix
-	os.Setenv("APP_SERVER_PORT", "9090")
-	defer os.Unsetenv("APP_SERVER_PORT")
+	_ = os.Setenv("APP_SERVER_PORT", "9090")
+	defer func() { _ = os.Unsetenv("APP_SERVER_PORT") }()
 
 	// Create a temporary config file
 	tmpDir := os.TempDir()
@@ -123,7 +123,7 @@ func Example_withENVPrefix() {
   port: 8080
 `
 	_ = os.WriteFile(yamlPath, []byte(yamlContent), 0o600)
-	defer os.Remove(yamlPath)
+	defer func() { _ = os.Remove(yamlPath) }()
 
 	type Config struct {
 		Server struct {
@@ -157,7 +157,7 @@ func Example_validation() {
   port: 99999
 `
 	_ = os.WriteFile(yamlPath, []byte(yamlContent), 0o600)
-	defer os.Remove(yamlPath)
+	defer func() { _ = os.Remove(yamlPath) }()
 
 	type Config struct {
 		Server struct {
@@ -186,7 +186,7 @@ DATABASE_HOST=localhost
 DATABASE_PORT=5432
 `
 	_ = os.WriteFile(envPath, []byte(envContent), 0o600)
-	defer os.Remove(envPath)
+	defer func() { _ = os.Remove(envPath) }()
 
 	// Define your config structure
 	// Note: Use mapstructure tags for .env files
@@ -218,7 +218,7 @@ func Example_envFile() {
 DATABASE_PORT=5432
 `
 	_ = os.WriteFile(envPath, []byte(envContent), 0o600)
-	defer os.Remove(envPath)
+	defer func() { _ = os.Remove(envPath) }()
 
 	// Create a temporary YAML config file
 	yamlPath := filepath.Join(tmpDir, "config-override.yaml")
@@ -231,7 +231,7 @@ database:
   port: 3306
 `
 	_ = os.WriteFile(yamlPath, []byte(yamlContent), 0o600)
-	defer os.Remove(yamlPath)
+	defer func() { _ = os.Remove(yamlPath) }()
 
 	// Define your config structure
 	type Config struct {

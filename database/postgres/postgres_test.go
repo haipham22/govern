@@ -883,7 +883,7 @@ func TestConfigureConnectionPoolSuccess(t *testing.T) {
 	// Create mock database
 	mockDB, _, err := sqlmock.New()
 	require.NoError(t, err)
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	// Create GORM DB from mock
 	dialector := gormpostgres.New(gormpostgres.Config{
@@ -918,7 +918,7 @@ func TestConfigureConnectionPoolWithZeroIdleTime(t *testing.T) {
 	// Test the code path where ConnMaxIdleTime is 0
 	mockDB, _, err := sqlmock.New()
 	require.NoError(t, err)
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	dialector := gormpostgres.New(gormpostgres.Config{
 		Conn: mockDB,
@@ -984,7 +984,7 @@ func TestConfigureConnectionPoolVariousConfigurations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockDB, _, err := sqlmock.New()
 			require.NoError(t, err)
-			defer mockDB.Close()
+			defer func() { _ = mockDB.Close() }()
 
 			dialector := gormpostgres.New(gormpostgres.Config{
 				Conn: mockDB,
@@ -1017,7 +1017,7 @@ func TestConfigureConnectionPoolFailure(t *testing.T) {
 	// Create a mock sql.DB that will fail
 	mockDB, _, err := sqlmock.New()
 	require.NoError(t, err)
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	dialector := gormpostgres.New(gormpostgres.Config{
 		Conn: mockDB,
@@ -1029,7 +1029,7 @@ func TestConfigureConnectionPoolFailure(t *testing.T) {
 
 	// Close the underlying DB to force db.DB() to fail
 	sqlDB, _ := db.DB()
-	sqlDB.Close()
+	_ = sqlDB.Close()
 
 	cfg := &postgres.Config{
 		MaxIdleConns:    10,
@@ -1050,7 +1050,7 @@ func TestNewWithMockSuccess(t *testing.T) {
 	// Test the full New() function with a mock connection
 	mockDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	dialector := gormpostgres.New(gormpostgres.Config{
 		Conn: mockDB,
@@ -1121,7 +1121,7 @@ func TestCleanupIdempotent(t *testing.T) {
 	// Test that cleanup can be called multiple times safely
 	mockDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	dialector := gormpostgres.New(gormpostgres.Config{
 		Conn: mockDB,
@@ -1153,7 +1153,7 @@ func TestPoolConfigurationApplied(t *testing.T) {
 	// Verify that pool configuration values are correctly applied
 	mockDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	dialector := gormpostgres.New(gormpostgres.Config{
 		Conn: mockDB,

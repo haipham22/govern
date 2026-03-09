@@ -24,7 +24,7 @@ func TestWrapHandler(t *testing.T) {
 			name: "wraps standard http handler successfully",
 			httpHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("standard handler response"))
+				_, _ = w.Write([]byte("standard handler response"))
 			}),
 			method:     "GET",
 			path:       "/test",
@@ -39,7 +39,7 @@ func TestWrapHandler(t *testing.T) {
 					return
 				}
 				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte("created"))
+				_, _ = w.Write([]byte("created"))
 			}),
 			method:     "POST",
 			path:       "/create",
@@ -55,7 +55,7 @@ func TestWrapHandler(t *testing.T) {
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("headers preserved"))
+				_, _ = w.Write([]byte("headers preserved"))
 			}),
 			method:     "GET",
 			path:       "/headers",
@@ -112,7 +112,7 @@ func TestWrapHandler_WithQueryParams(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("query params ok"))
+		_, _ = w.Write([]byte("query params ok"))
 	})
 
 	e.GET("/test", httpEcho.WrapHandler(handler))
@@ -136,7 +136,7 @@ func TestWrapHandler_WithRequestBody(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("body received"))
+		_, _ = w.Write([]byte("body received"))
 	})
 
 	e.POST("/test", httpEcho.WrapHandler(handler))

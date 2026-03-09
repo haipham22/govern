@@ -35,6 +35,15 @@ go get github.com/haipham22/govern
 
 See [QUICKSTART.md](./QUICKSTART.md) for installation and usage examples.
 
+## Comprehensive Documentation
+
+For detailed documentation, see the `docs/` directory:
+- [Project Overview & PDR](./docs/project-overview-pdr.md) - Project overview and requirements
+- [Codebase Summary](./docs/codebase-summary.md) - Comprehensive codebase analysis
+- [Code Standards](./docs/code-standards.md) - Coding standards and conventions
+- [System Architecture](./docs/system-architecture.md) - Architecture and design patterns
+- [Deployment Guide](./docs/deployment-guide.md) - Deployment instructions
+
 ## Roadmap
 
 ### Phase 1: Core Functionality ✅

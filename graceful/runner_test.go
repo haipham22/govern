@@ -169,7 +169,7 @@ func TestRun_SingleService(t *testing.T) {
 			// Send SIGTERM to trigger shutdown after service starts
 			go func() {
 				time.Sleep(100 * time.Millisecond)
-				syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+				_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 			}()
 
 			err := Run(context.Background(), log, timeout, tt.service)
@@ -224,7 +224,7 @@ func TestRun_MultipleServices(t *testing.T) {
 			// Send SIGTERM to trigger shutdown after services start
 			go func() {
 				time.Sleep(100 * time.Millisecond)
-				syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+				_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 			}()
 
 			err := Run(context.Background(), log, timeout, services...)
@@ -275,7 +275,7 @@ func TestRun_ServiceFunc(t *testing.T) {
 	// Send SIGTERM to trigger shutdown after service starts
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}()
 
 	err := Run(context.Background(), log, timeout, service)
@@ -305,7 +305,7 @@ func TestRun_ShutdownDelay(t *testing.T) {
 	// Send SIGTERM to trigger shutdown after service starts
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}()
 
 	err := Run(context.Background(), log, timeout, service)
@@ -337,7 +337,7 @@ func TestRun_ContextCancellation(t *testing.T) {
 	// Send SIGTERM immediately
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}()
 
 	err := Run(context.Background(), log, timeout, service)
@@ -359,10 +359,10 @@ func BenchmarkRun(b *testing.B) {
 		// Send SIGTERM immediately in benchmark
 		go func() {
 			time.Sleep(10 * time.Millisecond)
-			syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		}()
 
-		Run(context.Background(), log, timeout, service)
+		_ = Run(context.Background(), log, timeout, service)
 	}
 }
 
@@ -381,9 +381,9 @@ func BenchmarkRun_MultipleServices(b *testing.B) {
 		// Send SIGTERM immediately in benchmark
 		go func() {
 			time.Sleep(10 * time.Millisecond)
-			syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		}()
 
-		Run(context.Background(), log, timeout, services...)
+		_ = Run(context.Background(), log, timeout, services...)
 	}
 }

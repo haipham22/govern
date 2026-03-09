@@ -73,7 +73,7 @@ func TestTrimStrings_Middleware(t *testing.T) {
 		var receivedData map[string]interface{}
 		next := func(c echo.Context) error {
 			bodyBytes, _ := io.ReadAll(c.Request().Body)
-			sonic.Unmarshal(bodyBytes, &receivedData)
+			_ = sonic.Unmarshal(bodyBytes, &receivedData)
 			return nil
 		}
 
@@ -102,7 +102,7 @@ func TestTrimStrings_Middleware(t *testing.T) {
 		var receivedData map[string]interface{}
 		next := func(c echo.Context) error {
 			bodyBytes, _ := io.ReadAll(c.Request().Body)
-			sonic.Unmarshal(bodyBytes, &receivedData)
+			_ = sonic.Unmarshal(bodyBytes, &receivedData)
 			return nil
 		}
 

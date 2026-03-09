@@ -8,7 +8,7 @@ import (
 
 // ExampleManager demonstrates basic Manager usage.
 func ExampleManager() {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 
 	// Run a background goroutine
 	m.Go(func(ctx context.Context) error {
@@ -36,7 +36,7 @@ func ExampleManager() {
 
 // ExampleManager_withFailFast demonstrates fail-fast behavior.
 func ExampleManager_withFailFast() {
-	m := NewManager(nil, WithFailFast(true))
+	m := NewManager(context.TODO(), WithFailFast(true))
 
 	m.Go(func(ctx context.Context) error {
 		// If this returns an error, shutdown begins immediately
@@ -49,7 +49,7 @@ func ExampleManager_withFailFast() {
 
 // ExampleWorkerGroup demonstrates WorkerGroup usage.
 func ExampleWorkerGroup() {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	wg := NewWorkerGroup(10) // Max 10 concurrent jobs
 
 	m.Go(func(ctx context.Context) error {
@@ -77,7 +77,7 @@ func ExampleWorkerGroup() {
 func ExampleServer() {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello, World!"))
+		_, _ = w.Write([]byte("Hello, World!"))
 	})
 
 	// Import github.com/haipham22/govern/http

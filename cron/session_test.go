@@ -22,10 +22,10 @@ func TestSchedulerSession(t *testing.T) {
 	})
 
 	t.Run("Context returns the provided context", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), "key", "value")
+		ctx := context.WithValue(context.Background(), contextKey("key"), "value")
 		session := NewSchedulerSession(ctx, "test", "job1", time.Time{}, time.Now())
 
-		assert.Equal(t, "value", session.Context().Value("key"))
+		assert.Equal(t, "value", session.Context().Value(contextKey("key")))
 	})
 
 	t.Run("Scheduler returns the scheduler name", func(t *testing.T) {
@@ -61,14 +61,14 @@ func TestSchedulerSession(t *testing.T) {
 	})
 
 	t.Run("multiple sessions have independent values", func(t *testing.T) {
-		ctx1 := context.WithValue(context.Background(), "key", "value1")
-		ctx2 := context.WithValue(context.Background(), "key", "value2")
+		ctx1 := context.WithValue(context.Background(), contextKey("key"), "value1")
+		ctx2 := context.WithValue(context.Background(), contextKey("key"), "value2")
 
 		session1 := NewSchedulerSession(ctx1, "scheduler1", "job1", time.Now().Add(-2*time.Hour), time.Now())
 		session2 := NewSchedulerSession(ctx2, "scheduler2", "job2", time.Now().Add(-1*time.Hour), time.Now().Add(1*time.Hour))
 
-		assert.Equal(t, "value1", session1.Context().Value("key"))
-		assert.Equal(t, "value2", session2.Context().Value("key"))
+		assert.Equal(t, "value1", session1.Context().Value(contextKey("key")))
+		assert.Equal(t, "value2", session2.Context().Value(contextKey("key")))
 		assert.Equal(t, "scheduler1", session1.Scheduler())
 		assert.Equal(t, "scheduler2", session2.Scheduler())
 		assert.Equal(t, "job1", session1.Job())

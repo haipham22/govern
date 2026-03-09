@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewManager(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	if m == nil {
 		t.Fatal("NewManager() returned nil")
 	}
@@ -30,14 +30,14 @@ func TestNewManagerWithParent(t *testing.T) {
 }
 
 func TestNewManagerWithOptions(t *testing.T) {
-	m := NewManager(nil, WithFailFast(false))
+	m := NewManager(context.TODO(), WithFailFast(false))
 	if m.failFast != false {
 		t.Error("WithFailFast(false) failed")
 	}
 }
 
 func TestManagerContext(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	ctx := m.Context()
 	if ctx == nil {
 		t.Fatal("Context() returned nil")
@@ -45,7 +45,7 @@ func TestManagerContext(t *testing.T) {
 }
 
 func TestManagerInitiateShutdown(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 
 	// Should not panic
 	m.InitiateShutdown()
@@ -60,7 +60,7 @@ func TestManagerInitiateShutdown(t *testing.T) {
 }
 
 func TestManagerGo(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	done := make(chan struct{})
 
 	m.Go(func(ctx context.Context) error {
@@ -78,7 +78,7 @@ func TestManagerGo(t *testing.T) {
 }
 
 func TestManagerDefer(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	called := false
 
 	m.Defer(func(ctx context.Context) error {
@@ -95,7 +95,7 @@ func TestManagerDefer(t *testing.T) {
 }
 
 func TestManagerDeferLIFO(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	order := []int{}
 
 	m.Defer(func(ctx context.Context) error {
@@ -120,7 +120,7 @@ func TestManagerDeferLIFO(t *testing.T) {
 }
 
 func TestManagerWait(t *testing.T) {
-	m := NewManager(nil)
+	m := NewManager(context.TODO())
 	m.InitiateShutdown()
 
 	err := m.Wait()

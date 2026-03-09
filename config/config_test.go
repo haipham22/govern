@@ -80,11 +80,11 @@ func createTempFile(t *testing.T, filename, content string) string {
 func setEnvVars(t *testing.T, vars map[string]string) func() {
 	t.Helper()
 	for k, v := range vars {
-		os.Setenv(k, v)
+		_ = os.Setenv(k, v)
 	}
 	return func() {
 		for k := range vars {
-			os.Unsetenv(k)
+			_ = os.Unsetenv(k)
 		}
 	}
 }

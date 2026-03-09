@@ -113,7 +113,7 @@ A standard, community-adopted library for Go service development that simplifies
 ### Technical Requirements
 
 #### TR-1: Technology Stack
-- **TR-1.1**: Go 1.25/1.26 (recently downgraded from 1.26 due to golangci-lint compatibility)
+- **TR-1.1**: Go 1.25.8 (downgraded from 1.26 due to golangci-lint compatibility)
 - **TR-1.2**: Echo v4 HTTP framework
 - **TR-1.3**: GORM v1.31.1 PostgreSQL ORM
 - **TR-1.4**: go-redis/v9 v9.17.3 Redis client

@@ -426,7 +426,7 @@ func Exponential(delay, maxDelay time.Duration, multiplier, jitter float64) Back
 ## Technology Stack
 
 ### Core Dependencies
-- **Go 1.23**: Recently downgraded from 1.26 due to golangci-lint compatibility
+- **Go 1.25.8**: Downgraded from 1.26 due to golangci-lint compatibility
 - **Echo v4**: High-performance HTTP framework
 - **GORM v1.31.1**: PostgreSQL ORM (maintained for stability)
 - **go-redis/v9**: Redis client with excellent performance

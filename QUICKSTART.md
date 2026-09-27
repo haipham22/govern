@@ -148,10 +148,12 @@ Putting it all together:
 package main
 
 import (
+    "context"
+    "net/http"
+
+    governhttp "github.com/haipham22/govern/http"
     "github.com/haipham22/govern/config"
     "github.com/haipham22/govern/database/postgres"
-    "github.com/haipham22/govern/http"
-    echo "github.com/labstack/echo/v4"
 )
 
 type Config struct {
@@ -186,14 +188,17 @@ func main() {
         panic(err)
     }
     defer cleanup()
+    _ = db
 
-    // 3. Start HTTP server
-    e := echo.New()
-    srv := http.NewServer(":8080", e)
-    e.GET("/health", func(c echo.Context) error {
-        return c.JSON(200, map[string]string{"status": "ok"})
+    // 3. Start HTTP server (any http.Handler works: net/http mux, chi, ...)
+    mux := http.NewServeMux()
+    mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        w.Write([]byte(`{"status":"ok"}`))
     })
-    srv.Start()
+
+    srv := governhttp.NewServer(":8080", mux)
+    _ = srv.Start(context.Background())
 }
 ```
 

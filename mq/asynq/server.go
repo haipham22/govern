@@ -15,13 +15,13 @@ import (
 // Server implements graceful.Service for asynq workers.
 // It wraps asynq.Server with govern patterns for lifecycle management.
 type Server struct {
-	server    *asynq.Server
-	mux       *TaskMux
-	logger    *zap.SugaredLogger
-	config    *Config
-	mu        sync.RWMutex
-	started   atomic.Bool
-	shutdown  atomic.Bool
+	server   *asynq.Server
+	mux      *TaskMux
+	logger   *zap.SugaredLogger
+	config   *Config
+	mu       sync.RWMutex
+	started  atomic.Bool
+	shutdown atomic.Bool
 }
 
 var _ gracefulService = (*Server)(nil)

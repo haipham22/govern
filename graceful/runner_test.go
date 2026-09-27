@@ -3,6 +3,7 @@ package graceful
 import (
 	"context"
 	"errors"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -385,5 +386,63 @@ func BenchmarkRun_MultipleServices(b *testing.B) {
 		}()
 
 		_ = Run(context.Background(), log, timeout, services...)
+	}
+}
+
+// hookRecorder tracks whether Start completed and Shutdown was called.
+type hookRecorder struct {
+	name       string
+	startDelay time.Duration
+	startErr   error
+
+	mu       sync.Mutex
+	started  bool
+	shutdown bool
+}
+
+func (h *hookRecorder) Start(ctx context.Context) error {
+	if h.startDelay > 0 {
+		select {
+		case <-time.After(h.startDelay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	h.mu.Lock()
+	h.started = true
+	h.mu.Unlock()
+	return h.startErr
+}
+
+func (h *hookRecorder) Shutdown(_ context.Context) error {
+	h.mu.Lock()
+	h.shutdown = true
+	h.mu.Unlock()
+	return nil
+}
+
+func (h *hookRecorder) wasShutdown() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.shutdown
+}
+
+// Regression: Run registers a service's shutdown hook only after its Start
+// succeeds. A service whose Start fails must never have Shutdown called
+// during rollback.
+func TestRun_DeferOnlyAfterSuccessfulStart(t *testing.T) {
+	ok := &hookRecorder{name: "ok"}
+	bad := &hookRecorder{name: "bad", startDelay: 20 * time.Millisecond, startErr: errors.New("boom")}
+
+	err := Run(context.Background(), zap.NewNop().Sugar(), 2*time.Second, ok, bad)
+	if err == nil {
+		t.Fatal("expected error from failing service")
+	}
+
+	if !ok.wasShutdown() {
+		t.Error("ok service: Shutdown must be called (it started successfully)")
+	}
+	if bad.wasShutdown() {
+		t.Error("bad service: Shutdown must NOT be called (never started)")
 	}
 }

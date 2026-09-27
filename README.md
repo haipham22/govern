@@ -17,17 +17,22 @@ go get github.com/haipham22/govern
 |---------------------------------------------|--------------------------------------------------------------|
 | [`config`](./config/)                       | Configuration loading with YAML, .env, and ENV variables      |
 | [`http`](./http/)                           | HTTP server with graceful shutdown and middleware            |
-| [`http/echo`](./http/echo/)                 | Echo utilities: JWT middleware, Swagger integration, handler wrapping         |
 | [`http/jwt`](./http/jwt/)                   | JWT authentication middleware and token management           |
 | [`http/middleware`](./http/middleware/)     | Common HTTP middleware (logging, recovery, CORS, request ID) |
+| [`http/request`](./http/request/)           | Query-param decoding and paging requests (offset + generic cursor) |
 | [`graceful`](./graceful/)                   | Goroutine and process management with graceful shutdown      |
 | [`database/postgres`](./database/postgres/) | PostgreSQL connection management with GORM                   |
 | [`database/redis`](./database/redis/)       | Redis connection management with connection pooling          |
 | [`cron`](./cron/)                           | Cron scheduler with gocron v2, graceful lifecycle (Phase 1: Handler & Session complete) |
 | [`mq/asynq`](./mq/asynq/)                    | Asynq integration with Redis message queue (Phase 2: Client implementation complete) |
+| [`mq/redisstream`](./mq/redisstream/)       | Redis Streams consumer groups: at-least-once delivery, XAUTOCLAIM crash recovery |
+| [`outbox`](./outbox/)                       | Transactional outbox: types, Relay, wire helpers — you own Storage + Publisher |
+| [`events`](./events/)                       | Inbox pattern: types, Worker, wire helpers — you own InboxStorage + consumer loop |
 | [`errors`](./errors/)                       | Structured error handling with error codes                   |
 | [`log`](./log/)                             | Zap-based structured logging                                 |
+| [`mailer`](./mailer/)                       | Transactional email over SMTP; log-only fallback when unconfigured |
 | [`metrics`](./metrics/)                     | Prometheus metrics with HTTP middleware                      |
+| [`otlp`](./otlp/)                           | OpenTelemetry setup: traces, metrics, and logs via OTLP      |
 | [`healthcheck`](./healthcheck/)             | Health check registry for liveness/readiness probes          |
 | [`retry`](./retry/)                         | Flexible retry logic with backoff strategies                 |
 

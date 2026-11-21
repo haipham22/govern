@@ -8,9 +8,14 @@ import (
 	"net/url"
 
 	"github.com/google/uuid"
-
-	"github.com/haipham22/govern/http/middleware"
 )
+
+// ctxKeyRequestID is the context key type for the inbound request id.
+type ctxKeyRequestID struct{}
+
+// RequestIDKey is the context key for an inbound request id; callers may set
+// it to propagate their own id instead of a client-generated uuid.
+var RequestIDKey ctxKeyRequestID
 
 // Error is a typed non-2xx response. 5xx and 429 are retried; every other
 // status is a terminal business error.
@@ -51,10 +56,10 @@ var (
 	}
 )
 
-// requestIDFromCtx reuses the govern middleware request id when present,
+// requestIDFromCtx reuses the request id from context when present,
 // else generates a uuid.
 func requestIDFromCtx(ctx context.Context) string {
-	if id, ok := ctx.Value(middleware.RequestIDKeyVal).(string); ok && id != "" {
+	if id, ok := ctx.Value(RequestIDKey).(string); ok && id != "" {
 		return id
 	}
 	return uuid.New().String()

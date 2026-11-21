@@ -3,7 +3,7 @@
 ![CI](https://github.com/haipham22/govern/workflows/CI/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/haipham22/govern)](https://goreportcard.com/report/github.com/haipham22/govern)
 
-A lightweight, production-ready Go library for building robust HTTP services with graceful shutdown, database management, JWT authentication, logging, metrics, and health checks.
+A lightweight Go library of production-ready building blocks: config, structured errors, logging, retries, graceful shutdown, health checks, an outbound HTTP client, and S3 storage.
 
 ## Installation
 
@@ -16,25 +16,17 @@ go get github.com/haipham22/govern
 | Package                                     | Description                                                  |
 |---------------------------------------------|--------------------------------------------------------------|
 | [`config`](./config/)                       | Configuration loading with YAML, .env, and ENV variables      |
-| [`http`](./http/)                           | HTTP server with graceful shutdown and middleware            |
-| [`http/jwt`](./http/jwt/)                   | JWT authentication middleware and token management           |
-| [`http/middleware`](./http/middleware/)     | Common HTTP middleware (logging, recovery, CORS, request ID) |
-| [`http/request`](./http/request/)           | Query-param decoding and paging requests (offset + generic cursor) |
-| [`graceful`](./graceful/)                   | Goroutine and process management with graceful shutdown      |
-| [`database/postgres`](./database/postgres/) | PostgreSQL connection management with GORM                   |
-| [`database/redis`](./database/redis/)       | Redis connection management with connection pooling          |
-| [`cron`](./cron/)                           | Cron scheduler with gocron v2, graceful lifecycle (Phase 1: Handler & Session complete) |
-| [`mq/asynq`](./mq/asynq/)                    | Asynq integration with Redis message queue (Phase 2: Client implementation complete) |
-| [`mq/redisstream`](./mq/redisstream/)       | Redis Streams consumer groups: at-least-once delivery, XAUTOCLAIM crash recovery |
-| [`outbox`](./outbox/)                       | Transactional outbox: types, Relay, wire helpers — you own Storage + Publisher |
-| [`events`](./events/)                       | Inbox pattern: types, Worker, wire helpers — you own InboxStorage + consumer loop |
 | [`errors`](./errors/)                       | Structured error handling with error codes                   |
 | [`log`](./log/)                             | Zap-based structured logging                                 |
-| [`mailer`](./mailer/)                       | Transactional email over SMTP; log-only fallback when unconfigured |
-| [`metrics`](./metrics/)                     | Prometheus metrics with HTTP middleware                      |
-| [`otlp`](./otlp/)                           | OpenTelemetry setup: traces, metrics, and logs via OTLP      |
-| [`healthcheck`](./healthcheck/)             | Health check registry for liveness/readiness probes          |
 | [`retry`](./retry/)                         | Flexible retry logic with backoff strategies                 |
+| [`graceful`](./graceful/)                   | Goroutine and process management with graceful shutdown      |
+| [`healthcheck`](./healthcheck/)             | Health check registry for liveness/readiness probes          |
+| [`http/client`](./http/client/)             | Outbound HTTP client: retries, request-id propagation, JSON helpers |
+| [`s3`](./s3/)                               | S3-compatible object storage (AWS SDK v2): upload, download, presign, remove |
+
+## Removed (2026-11-21)
+
+`mq`, `cron`, `events`, `outbox`, `database`, `mailer`, `metrics`, `otlp`, `http server/jwt/request` — unused by the consumer project; recover from git history if ever needed.
 
 ## Quick Start
 
@@ -52,25 +44,15 @@ For detailed documentation, see the `docs/` directory:
 ## Roadmap
 
 ### Phase 1: Core Functionality ✅
-- [x] Graceful server shutdown
-- [x] PostgreSQL connection management
 - [x] Structured error handling
 - [x] Zap-based logging package
-
-### Phase 2: Enhancement ✅
-- [x] Metrics integration (Prometheus)
-- [x] Health check utilities
 - [x] Retry logic
-- [x] HTTP server with middleware
+- [x] Health check utilities
 
-### Phase 3: Ecosystem ✅
-- [x] Echo utilities (JWT, Swagger, handler wrapping)
-- [x] JWT authentication
-- [x] UniversalClient interface tests
-- [x] Cron scheduler Phase 1 (Handler & Session interfaces)
-- [x] Asynq integration Phase 2 (Client implementation)
+### Phase 2: Integration ✅
+- [x] Outbound HTTP client with retry semantics and request-id propagation
+- [x] S3-compatible object storage client
 - [ ] Circuit breaker pattern
-- [ ] Additional framework integrations (gin, fiber)
 
 ## Requirements
 

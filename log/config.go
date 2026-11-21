@@ -31,6 +31,9 @@ type config struct {
 	timeFormat  string
 	output      zapcore.WriteSyncer
 	errorOutput zapcore.WriteSyncer
+	// explicitErrorOutput records whether the caller set WithErrorOutput;
+	// the default stderr sink is never wired, keeping Sync() unchanged.
+	explicitErrorOutput bool
 }
 
 // WithLevel sets the log level.
@@ -81,10 +84,13 @@ func WithOutputFile(path string) Option {
 	}
 }
 
-// WithErrorOutput sets the error output destination.
+// WithErrorOutput sets a dedicated sink that additionally receives all
+// error-level entries. The default logger never wires stderr, so Sync()
+// behavior is unchanged unless this option is used.
 func WithErrorOutput(w zapcore.WriteSyncer) Option {
 	return func(c *config) {
 		c.errorOutput = w
+		c.explicitErrorOutput = true
 	}
 }
 

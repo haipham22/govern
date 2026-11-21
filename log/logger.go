@@ -43,17 +43,19 @@ func New(opts ...Option) *zap.SugaredLogger {
 	if cfg.encoding == "console" {
 		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
+	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout(cfg.timeFormat)
 
 	encoder := zapcore.NewConsoleEncoder(encoderConfig)
 	if cfg.encoding == "json" {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	}
 
-	core := zapcore.NewCore(
-		encoder,
-		cfg.output,
-		cfg.level,
-	)
+	// Error-level entries also go to the dedicated error output when one is
+	// explicitly supplied, so callers can split stderr from stdout.
+	core := zapcore.NewCore(encoder, cfg.output, cfg.level)
+	if cfg.explicitErrorOutput {
+		core = zapcore.NewTee(core, zapcore.NewCore(encoder, cfg.errorOutput, zapcore.ErrorLevel))
+	}
 
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 	return logger.Sugar()

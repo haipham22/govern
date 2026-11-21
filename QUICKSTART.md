@@ -109,37 +109,6 @@ cfg, err := config.LoadWithOptions[Config](
 
 **Priority**: System ENV > .env file > YAML values
 
-## PostgreSQL Connection
-
-Connect to PostgreSQL with connection pooling:
-
-```go
-package main
-
-import (
-    "github.com/haipham22/govern/database/postgres"
-)
-
-func main() {
-    db, cleanup, err := postgres.New(&postgres.Config{
-        Host:         "localhost",
-        Port:         5432,
-        Database:     "mydb",
-        User:         "user",
-        Password:     "password",
-        MaxIdleConns: 25,
-        MaxOpenConns: 100,
-    })
-    if err != nil {
-        panic(err)
-    }
-    defer cleanup()
-
-    // Use db with GORM
-    // db.AutoMigrate(&User{})
-}
-```
-
 ## Complete Example
 
 Putting it all together:
@@ -149,23 +118,15 @@ package main
 
 import (
     "context"
-    "net/http"
+    "fmt"
 
-    governhttp "github.com/haipham22/govern/http"
     "github.com/haipham22/govern/config"
-    "github.com/haipham22/govern/database/postgres"
+    governclient "github.com/haipham22/govern/http/client"
 )
 
 type Config struct {
-    Server struct {
-        Port int `validate:"min=1,max=65535"`
-    } `validate:"required"`
-    Postgres struct {
-        Host     string `validate:"required"`
-        Port     int    `validate:"required"`
-        Database string `validate:"required"`
-        User     string `validate:"required"`
-        Password string `validate:"required"`
+    API struct {
+        BaseURL string `validate:"required,url"`
     } `validate:"required"`
 }
 
@@ -176,29 +137,16 @@ func main() {
         panic(err)
     }
 
-    // 2. Connect to database
-    db, cleanup, err := postgres.New(&postgres.Config{
-        Host:     cfg.Postgres.Host,
-        Port:     cfg.Postgres.Port,
-        Database: cfg.Postgres.Database,
-        User:     cfg.Postgres.User,
-        Password: cfg.Postgres.Password,
+    // 2. Outbound calls with retries + request-id propagation
+    client := governclient.New(governclient.WithBaseURL(cfg.API.BaseURL))
+    resp, err := client.Do(context.Background(), &governclient.Request{
+        Method: "GET",
+        URL:    "/v1/ping",
     })
     if err != nil {
         panic(err)
     }
-    defer cleanup()
-    _ = db
-
-    // 3. Start HTTP server (any http.Handler works: net/http mux, chi, ...)
-    mux := http.NewServeMux()
-    mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json")
-        w.Write([]byte(`{"status":"ok"}`))
-    })
-
-    srv := governhttp.NewServer(":8080", mux)
-    _ = srv.Start(context.Background())
+    fmt.Println(resp.StatusCode)
 }
 ```
 
@@ -210,8 +158,7 @@ func main() {
 
 ## Examples
 
-See the [examples directory](./examples/) for complete working examples:
-- Basic HTTP server
-- JWT authentication
-- Database integration
-- Configuration management
+See each package's README and doc comments for complete usage examples:
+- [`config`](./config/) — YAML, .env, and ENV-variable loading
+- [`http/client`](./http/client/) — outbound HTTP with retries and request-id propagation
+- [`s3`](./s3/) — object storage upload, download, presigned URLs

@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haipham22/govern/http/middleware"
 	"github.com/haipham22/govern/retry"
 )
 
@@ -229,10 +228,10 @@ func TestRequestID_PropagationAndGeneration(t *testing.T) {
 		description string
 	}{
 		{
-			name:        "propagates the middleware request id from context",
+			name:        "propagates the request id from context",
 			ctxValue:    "req-abc-123",
 			wantID:      "req-abc-123",
-			description: "X-Request-ID mirrors the middleware ctx value",
+			description: "X-Request-ID mirrors the ctx value",
 		},
 		{
 			name:        "generates a uuid without a ctx value",
@@ -253,7 +252,7 @@ func TestRequestID_PropagationAndGeneration(t *testing.T) {
 
 			ctx := context.Background()
 			if tt.ctxValue != "" {
-				ctx = context.WithValue(ctx, middleware.RequestIDKeyVal, tt.ctxValue)
+				ctx = context.WithValue(ctx, RequestIDKey, tt.ctxValue)
 			}
 
 			c := newFastClient(WithBaseURL(srv.URL))
@@ -276,7 +275,7 @@ func TestError_CarriesRequestID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ctx := context.WithValue(context.Background(), middleware.RequestIDKeyVal, "propagated-1")
+	ctx := context.WithValue(context.Background(), RequestIDKey, "propagated-1")
 	_, err := newFastClient().Do(ctx, &Request{Method: http.MethodGet, URL: srv.URL})
 	require.Error(t, err)
 
